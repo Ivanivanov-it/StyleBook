@@ -20,6 +20,7 @@ class Style(CreatedAtMixin):
 
     views = models.PositiveIntegerField(default=0)
     likes = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="liked_by", blank=True)
+    downloads = models.PositiveIntegerField(default=0)
 
 class StyleImage(models.Model):
     style = models.ForeignKey(Style, on_delete=models.CASCADE, related_name="images")
