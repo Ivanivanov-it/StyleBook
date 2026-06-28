@@ -121,6 +121,9 @@ class StyleCreateSerializer(serializers.ModelSerializer):
 
 
 class StyleListSerializer(serializers.ModelSerializer):
+    likes = serializers.SerializerMethodField()
+    downloads = serializers.SerializerMethodField()
+    owner = serializers.CharField(source="user.username", read_only=True)
 
     class Meta:
         model = Style
@@ -128,14 +131,32 @@ class StyleListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
+            "description",
+            "game_class",
             "thumbnail",
-            "views"
+            "likes",
+            "views",
+            "downloads",
+            "owner",
         ]
+
+    def get_likes(self, obj):
+        return obj.likes.count()
+
+    def get_downloads(self, obj):
+        return obj.downloads
 
 class StyleDetailSerializer(serializers.ModelSerializer):
     images = StyleImageSerializer(many=True,read_only=True)
     likes = serializers.SerializerMethodField()
+    downloads = serializers.SerializerMethodField()
 
     class Meta:
         model = Style
         fields = "__all__"
+
+    def get_likes(self, obj):
+        return obj.likes.count()
+
+    def get_downloads(self, obj):
+        return obj.downloads

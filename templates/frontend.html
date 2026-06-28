@@ -1,0 +1,478 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    <title>StyleBook</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      const routes = {
+        home: "/",
+        login: "/login",
+        register: "/register",
+        all: "/styles",
+        mine: "/my-styles",
+      };
+
+      const fallbackStyles = [
+        { id: "demo-1", title: "Crimson Vanguard", game_class: "Warrior(Male)", likes: 148, views: 2300, downloads: 412 },
+        { id: "demo-2", title: "Moonlit Arcanist", game_class: "Mage", likes: 224, views: 4100, downloads: 865 },
+        { id: "demo-3", title: "Ivory Striker", game_class: "Martial Artist(Female)", likes: 91, views: 1200, downloads: 204 },
+        { id: "demo-4", title: "Neon Gunslinger", game_class: "Gunner(Female)", likes: 175, views: 3200, downloads: 603 },
+        { id: "demo-5", title: "Shadow Needle", game_class: "Assassin", likes: 251, views: 5100, downloads: 980 },
+        { id: "demo-6", title: "Solar Guardian", game_class: "Guardianknight", likes: 132, views: 2100, downloads: 348 },
+      ];
+
+      function getCsrfToken() {
+        return document.querySelector("meta[name='csrf-token']").content;
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken(),
+            ...(options.headers || {}),
+          },
+          ...options,
+        });
+
+        if (response.status === 204) return null;
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || JSON.stringify(data));
+        }
+        return data;
+      }
+
+      function normalizeList(data) {
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data?.results)) return data.results;
+        return [];
+      }
+
+      function imageFor(style) {
+        if (style.thumbnail) return style.thumbnail;
+
+        const label = encodeURIComponent(style.title || "Style");
+        return `https://placehold.co/480x640/111827/e2e8f0?text=${label}`;
+      }
+
+      function usePath() {
+        const [path, setPath] = useState(window.location.pathname);
+
+        useEffect(() => {
+          const onPopState = () => setPath(window.location.pathname);
+          window.addEventListener("popstate", onPopState);
+          return () => window.removeEventListener("popstate", onPopState);
+        }, []);
+
+        function navigate(nextPath) {
+          window.history.pushState({}, "", nextPath);
+          setPath(nextPath);
+        }
+
+        return [path, navigate];
+      }
+
+      function Shell({ children, user, navigate, onLogout, wide }) {
+        const navItems = [
+          ["Style Home", routes.home],
+          ["View all", routes.all],
+          ["My styles", routes.mine],
+        ];
+
+        return (
+          <div className="min-h-screen">
+            <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+              <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
+                <button onClick={() => navigate(routes.home)} className="text-xl font-black tracking-tight">
+                  Style<span className="text-cyan-300">Book</span>
+                </button>
+                <nav className="hidden items-center gap-2 md:flex">
+                  {navItems.map(([label, href]) => (
+                    <button key={href} onClick={() => navigate(href)} className="rounded-full px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white">
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                <div className="flex items-center gap-2">
+                  {user ? (
+                    <>
+                      <span className="hidden text-sm text-slate-400 sm:block">{user.username}</span>
+                      <button onClick={onLogout} className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/10">
+                        Logout
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => navigate(routes.login)} className="rounded-full px-4 py-2 text-sm hover:bg-white/10">
+                        Login
+                      </button>
+                      <button onClick={() => navigate(routes.register)} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-200">
+                        Register
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </header>
+            <main className={wide ? "px-5 py-8" : "mx-auto max-w-7xl px-5 py-8"}>{children}</main>
+          </div>
+        );
+      }
+
+      function AuthPage({ mode, navigate, onAuth }) {
+        const [form, setForm] = useState({ username: "", email: "", password: "" });
+        const [error, setError] = useState("");
+        const isRegister = mode === "register";
+
+        async function submit(event) {
+          event.preventDefault();
+          setError("");
+          try {
+            const body = isRegister ? form : { username: form.username, password: form.password };
+            const user = await api(`/api/auth/${mode}/`, { method: "POST", body: JSON.stringify(body) });
+            onAuth(user);
+            navigate(routes.home);
+          } catch (err) {
+            setError(err.message);
+          }
+        }
+
+        return (
+          <section className="mx-auto grid max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] shadow-2xl md:grid-cols-2">
+            <div className="bg-gradient-to-br from-cyan-300 to-fuchsia-400 p-10 text-slate-950">
+              <p className="text-sm font-bold uppercase tracking-[0.25em]">StyleBook</p>
+              <h1 className="mt-8 text-4xl font-black">{isRegister ? "Create your account" : "Welcome back"}</h1>
+              <p className="mt-4 text-lg text-slate-900/80">
+                Browse, collect, and manage character styles with class-based discovery.
+              </p>
+            </div>
+            <form onSubmit={submit} className="space-y-5 p-8 md:p-10">
+              <div>
+                <label className="text-sm text-slate-300">Username</label>
+                <input required value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none ring-cyan-300 focus:ring-2" />
+              </div>
+              {isRegister && (
+                <div>
+                  <label className="text-sm text-slate-300">Email</label>
+                  <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none ring-cyan-300 focus:ring-2" />
+                </div>
+              )}
+              <div>
+                <label className="text-sm text-slate-300">Password</label>
+                <input required type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 outline-none ring-cyan-300 focus:ring-2" />
+              </div>
+              {error && <p className="rounded-2xl bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+              <button className="w-full rounded-2xl bg-cyan-300 px-5 py-3 font-bold text-slate-950 hover:bg-cyan-200">
+                {isRegister ? "Register" : "Login"}
+              </button>
+              <p className="text-center text-sm text-slate-400">
+                {isRegister ? "Already registered?" : "Need an account?"}{" "}
+                <button type="button" onClick={() => navigate(isRegister ? routes.login : routes.register)} className="text-cyan-300 hover:underline">
+                  {isRegister ? "Login" : "Register"}
+                </button>
+              </p>
+            </form>
+          </section>
+        );
+      }
+
+      function StyleCard({ style }) {
+        return (
+          <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]">
+            <div className="aspect-[4/5] overflow-hidden bg-slate-900">
+              <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+            </div>
+            <div className="p-4">
+              <h3 className="truncate font-bold">{style.title}</h3>
+              <p className="mt-1 truncate text-sm text-slate-400">{style.game_class}</p>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-slate-300">
+                <span className="rounded-xl bg-white/5 py-2">♥ {style.likes || 0}</span>
+                <span className="rounded-xl bg-white/5 py-2">👁 {style.views || 0}</span>
+                <span className="rounded-xl bg-white/5 py-2">⬇ {style.downloads || 0}</span>
+              </div>
+            </div>
+          </article>
+        );
+      }
+
+      function ClassIcon({ name }) {
+        const icons = {
+          "Warrior(Male)": "♜",
+          "Warrior(Female)": "♛",
+          "Mage": "✥",
+          "Martial Artist(Female)": "✺",
+          "Martial Artist(Male)": "✹",
+          "Gunner(Male)": "✦",
+          "Gunner(Female)": "✧",
+          "Assassin": "♆",
+          "Specialist": "✣",
+          "Guardianknight": "♞",
+        };
+
+        return <span className="grid h-9 w-9 place-items-center text-xl text-sky-200/80">{icons[name] || "▦"}</span>;
+      }
+
+      function GameStyleCard({ style, featured }) {
+        return (
+          <article className={`group relative border bg-[#202838]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${featured ? "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.45)]" : "border-black/80"}`}>
+            <button className="absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200">
+              ☆
+            </button>
+            <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
+              <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105" />
+              <div className="absolute inset-x-0 bottom-0 bg-black/55 px-3 py-2 text-center text-sm text-yellow-200">
+                {style.owner || style.title}
+              </div>
+            </div>
+            <div className="bg-gradient-to-b from-[#2b3346] to-[#202637] px-3 py-2">
+              <h3 className="truncate text-center text-sm text-white">{style.title}</h3>
+              <div className="mt-2 grid grid-cols-3 text-xs text-slate-300">
+                <span className="flex items-center justify-center gap-1">⌕ {style.views || 0}</span>
+                <span className="flex items-center justify-center gap-1">⇩ {style.downloads || 0}</span>
+                <span className="flex items-center justify-center gap-1">♣ {style.likes || 0}</span>
+              </div>
+            </div>
+          </article>
+        );
+      }
+
+      function HotCarousel({ styles }) {
+        const [index, setIndex] = useState(0);
+        const hotStyles = styles.slice().sort((a, b) => ((b.likes || 0) + (b.views || 0)) - ((a.likes || 0) + (a.views || 0))).slice(0, 5);
+        const active = hotStyles[index] || hotStyles[0];
+
+        if (!active) return null;
+
+        return (
+          <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.25em] text-cyan-300">Hot Styles</p>
+                <h2 className="mt-2 text-2xl font-black">{active.title}</h2>
+                <p className="mt-1 text-slate-400">{active.game_class}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setIndex((index - 1 + hotStyles.length) % hotStyles.length)} className="rounded-full bg-white/10 px-4 py-2 hover:bg-white/20">‹</button>
+                <button onClick={() => setIndex((index + 1) % hotStyles.length)} className="rounded-full bg-white/10 px-4 py-2 hover:bg-white/20">›</button>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-5 md:grid-cols-[280px_1fr]">
+              <img src={imageFor(active)} alt={active.title} className="aspect-[4/5] w-full rounded-3xl object-cover" />
+              <div className="flex flex-col justify-end">
+                <p className="max-w-xl text-slate-300">{active.description || "A popular registered style from the community."}</p>
+                <div className="mt-6 flex flex-wrap gap-3 text-sm">
+                  <span className="rounded-full bg-white/10 px-4 py-2">♥ {active.likes || 0} likes</span>
+                  <span className="rounded-full bg-white/10 px-4 py-2">👁 {active.views || 0} views</span>
+                  <span className="rounded-full bg-white/10 px-4 py-2">⬇ {active.downloads || 0} downloads</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function HomePage({ styles, navigate }) {
+        const randomStyles = useMemo(() => styles.slice().sort(() => Math.random() - 0.5).slice(0, 8), [styles]);
+
+        return (
+          <div className="space-y-10">
+            <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-8">
+              <p className="text-sm font-bold uppercase tracking-[0.25em] text-cyan-300">Style Home</p>
+              <h1 className="mt-3 max-w-3xl text-4xl font-black md:text-6xl">Discover registered styles across every class.</h1>
+              <button onClick={() => navigate(routes.all)} className="mt-6 rounded-full bg-cyan-300 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-200">
+                View all styles
+              </button>
+            </section>
+            <HotCarousel styles={styles} />
+            <section>
+              <div className="mb-4 flex items-end justify-between">
+                <h2 className="text-2xl font-black">Random styles</h2>
+                <button onClick={() => navigate(routes.all)} className="text-sm text-cyan-300 hover:underline">View all</button>
+              </div>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {randomStyles.map((style) => <StyleCard key={style.id} style={style} />)}
+              </div>
+            </section>
+          </div>
+        );
+      }
+
+      function ListingPage({ title, styles, classes, mine, user, navigate }) {
+        const [selectedClass, setSelectedClass] = useState("");
+        const [search, setSearch] = useState("");
+        const [favoritesOnly, setFavoritesOnly] = useState(false);
+        const [savableOnly, setSavableOnly] = useState(false);
+        const [page, setPage] = useState(1);
+        const filtered = styles.filter((style) => {
+          const matchesClass = !selectedClass || style.game_class === selectedClass;
+          const searchText = `${style.title || ""} ${style.owner || ""}`.toLowerCase();
+          const matchesSearch = !search || searchText.includes(search.toLowerCase());
+          const matchesFavorites = !favoritesOnly || style.is_favorite || style.favorite;
+          const matchesSavable = !savableOnly || style.can_be_saved;
+          return matchesClass && matchesSearch && matchesFavorites && matchesSavable;
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / 10));
+        const pageStyles = filtered.slice((page - 1) * 10, page * 10);
+
+        useEffect(() => setPage(1), [selectedClass, search, favoritesOnly, savableOnly, styles]);
+
+        if (mine && !user) {
+          return (
+            <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-8 text-center">
+              <h1 className="text-3xl font-black">Login required</h1>
+              <p className="mt-2 text-slate-400">Login to view styles registered by your account.</p>
+              <button onClick={() => navigate(routes.login)} className="mt-6 rounded-full bg-cyan-300 px-6 py-3 font-bold text-slate-950">
+                Login
+              </button>
+            </section>
+          );
+        }
+
+        return (
+          <div className="-mx-5 -my-8 min-h-[calc(100vh-73px)] bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.14),transparent_34%),linear-gradient(180deg,rgba(2,6,23,0.94),rgba(2,6,23,0.98))] px-1 pb-3 text-slate-100">
+            <div className="border-b border-slate-600/50 bg-black/45">
+              <div className="grid max-w-7xl grid-cols-3 text-center font-serif text-lg text-slate-400">
+                <button onClick={() => navigate(routes.home)} className="border-r border-slate-700/50 py-2 hover:text-yellow-100">Style Home</button>
+                <button onClick={() => navigate(routes.all)} className={`${!mine ? "bg-gradient-to-b from-yellow-100/35 via-yellow-600/30 to-transparent font-semibold text-yellow-100 shadow-[inset_0_-1px_0_rgba(250,204,21,0.75)]" : "hover:text-yellow-100"} py-2`}>
+                  View All
+                </button>
+                <button onClick={() => navigate(routes.mine)} className={`${mine ? "bg-gradient-to-b from-yellow-100/35 via-yellow-600/30 to-transparent font-semibold text-yellow-100 shadow-[inset_0_-1px_0_rgba(250,204,21,0.75)]" : "hover:text-yellow-100"} border-l border-slate-700/50 py-2`}>
+                  My Style
+                </button>
+              </div>
+            </div>
+
+            <div className="mx-auto max-w-[1420px] px-1 pt-3">
+              <div className="mb-3 grid gap-3 lg:grid-cols-[290px_1fr]">
+                <div className="flex flex-wrap items-center gap-5 text-sm text-slate-300">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} className="h-5 w-5 appearance-none border border-slate-500 bg-black/50 checked:bg-sky-500" />
+                    View Favorites ({filtered.filter((style) => style.is_favorite || style.favorite).length}/40)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={savableOnly} onChange={(event) => setSavableOnly(event.target.checked)} className="h-5 w-5 appearance-none border border-slate-500 bg-black/50 checked:bg-sky-500" />
+                    View only savable appearances
+                  </label>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Enter Title or Author Name" className="h-10 w-full max-w-sm border border-slate-700 bg-black/45 px-3 text-sm text-slate-200 outline-none focus:border-sky-400" />
+                  <button className="h-10 w-16 border border-slate-700 bg-[#263244] text-2xl text-yellow-100 hover:border-sky-400">⌕</button>
+                  <button onClick={() => setPage(1)} className="h-10 min-w-36 border border-slate-700 bg-[#232b38] px-5 font-serif text-yellow-100 hover:border-yellow-500">
+                    View Latest
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[290px_1fr]">
+                <aside className="min-h-[640px] border border-slate-800/80 bg-black/45">
+                  <button onClick={() => setSelectedClass("")} className={`flex w-full items-center gap-5 border-b border-slate-800 px-5 py-3 text-left ${!selectedClass ? "border-sky-500 bg-sky-500/20 text-white shadow-[inset_0_0_20px_rgba(56,189,248,0.2)]" : "text-slate-100 hover:bg-white/5"}`}>
+                    <ClassIcon name="All" />
+                    <span>All</span>
+                  </button>
+                  {classes.map((item) => (
+                    <button key={item.value} onClick={() => setSelectedClass(item.value)} className={`flex w-full items-center gap-5 border-b border-slate-800 px-5 py-3 text-left ${selectedClass === item.value ? "border-sky-500 bg-sky-500/20 text-white shadow-[inset_0_0_20px_rgba(56,189,248,0.2)]" : "text-slate-100 hover:bg-white/5"}`}>
+                      <ClassIcon name={item.value} />
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </aside>
+
+                <section>
+                  {pageStyles.length ? (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                      {pageStyles.map((style, index) => <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} />)}
+                    </div>
+                  ) : (
+                    <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
+                      No styles found.
+                    </div>
+                  )}
+
+                  <div className="relative mt-3 flex items-center justify-center gap-4 border-t border-yellow-700/30 pt-2 text-slate-200">
+                    <button disabled={page === 1} onClick={() => setPage(Math.max(1, page - 1))} className="text-2xl text-sky-300 disabled:opacity-30">≪</button>
+                    <span className="min-w-24 text-center">{page}/{totalPages}</span>
+                    <button disabled={page === totalPages} onClick={() => setPage(Math.min(totalPages, page + 1))} className="text-2xl text-sky-300 disabled:opacity-30">≫</button>
+                    <button className="absolute right-0 bottom-0 border border-yellow-700 bg-yellow-700/80 px-8 py-2 text-sm text-yellow-50 hover:bg-yellow-600">
+                      Register Style
+                    </button>
+                  </div>
+                </section>
+              </div>
+
+              <div className="mt-3 text-sm text-slate-300">
+                Registered Style <span className="text-yellow-300">{mine ? styles.length : filtered.length}</span>/40
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function App() {
+        const [path, navigate] = usePath();
+        const [user, setUser] = useState(null);
+        const [styles, setStyles] = useState([]);
+        const [myStyles, setMyStyles] = useState([]);
+        const [classes, setClasses] = useState([]);
+
+        async function loadData(currentUser) {
+          const [stylesData, classesData] = await Promise.all([
+            api("/api/styles/").catch(() => fallbackStyles),
+            api("/api/styles/classes/").catch(() => []),
+          ]);
+          const normalizedStyles = normalizeList(stylesData);
+          setStyles(normalizedStyles.length ? normalizedStyles : fallbackStyles);
+          setClasses(classesData.length ? classesData : [...new Set(fallbackStyles.map((style) => style.game_class))].map((name) => ({ value: name, label: name })));
+
+          if (currentUser) {
+            const mineData = await api("/api/styles/mine/").catch(() => []);
+            setMyStyles(normalizeList(mineData));
+          } else {
+            setMyStyles([]);
+          }
+        }
+
+        useEffect(() => {
+          api("/api/auth/me/")
+            .then((data) => {
+              setUser(data.user);
+              return loadData(data.user);
+            })
+            .catch(() => loadData(null));
+        }, []);
+
+        async function logoutUser() {
+          await api("/api/auth/logout/", { method: "POST" });
+          setUser(null);
+          setMyStyles([]);
+          navigate(routes.home);
+        }
+
+        let page = <HomePage styles={styles} navigate={navigate} />;
+        if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
+        if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
+        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} />;
+        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} />;
+
+        return <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.all || path === routes.mine}>{page}</Shell>;
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

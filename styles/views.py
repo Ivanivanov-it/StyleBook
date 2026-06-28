@@ -5,7 +5,7 @@ from django.shortcuts import render
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
 from .models import Style, Favourite
 from .serializers import (
@@ -17,6 +17,15 @@ from .serializers import (
 class StyleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Style.objects.all().order_by('-id')
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        game_class = self.request.query_params.get("class")
+
+        if game_class:
+            queryset = queryset.filter(game_class=game_class)
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -33,6 +42,20 @@ class StyleViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def mine(self, request):
+        queryset = self.get_queryset().filter(user=request.user)
+        serializer = StyleListSerializer(queryset, many=True, context={"request": request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"])
+    def classes(self, request):
+        classes = [
+            {"value": value, "label": label}
+            for value, label in Style._meta.get_field("game_class").choices
+        ]
+        return Response(classes)
 
     @action(detail=True, methods=['post'])
     def like(self,request,pk=None):
