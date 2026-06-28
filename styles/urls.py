@@ -1,7 +1,7 @@
+from rest_framework.routers import DefaultRouter
+from .views import StyleViewSet
 
+router = DefaultRouter()
+router.register(r"styles", StyleViewSet,basename="styles")
 
-app_name = 'styles'
-
-urlpatterns = [
-
-]
+urlpatterns = router.urls
