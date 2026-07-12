@@ -87,11 +87,29 @@
         return [];
       }
 
+      function mediaUrl(url) {
+        if (!url) return "";
+        try {
+          const parsed = new URL(url, window.location.origin);
+          if (parsed.pathname.startsWith("/media/")) {
+            return `${window.location.origin}${parsed.pathname}`;
+          }
+          return parsed.href;
+        } catch {
+          return url;
+        }
+      }
+
       function imageFor(style) {
-        if (style.thumbnail) return style.thumbnail;
+        if (style.thumbnail) return mediaUrl(style.thumbnail);
 
         const label = encodeURIComponent(style.title || "Style");
         return `https://placehold.co/480x640/111827/e2e8f0?text=${label}`;
+      }
+
+      function handleImageError(event, label = "Style") {
+        event.currentTarget.onerror = null;
+        event.currentTarget.src = `https://placehold.co/480x640/111827/e2e8f0?text=${encodeURIComponent(label)}`;
       }
 
       function usePath() {
@@ -253,14 +271,14 @@
         return <span className="grid h-9 w-9 place-items-center text-xl text-sky-200/80">{icons[name] || "▦"}</span>;
       }
 
-      function GameStyleCard({ style, featured }) {
+      function GameStyleCard({ style, featured, onOpen }) {
         return (
-          <article className={`group relative border bg-[#202838]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${featured ? "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.45)]" : "border-black/80"}`}>
-            <button className="absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200">
+          <article onClick={() => onOpen?.(style)} className={`group relative cursor-pointer border bg-[#202838]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${featured ? "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.45)]" : "border-black/80"}`}>
+            <button onClick={(event) => event.stopPropagation()} className="absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200">
               ☆
             </button>
             <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
-              <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105" />
+              <img src={imageFor(style)} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105" />
               <div className="absolute inset-x-0 bottom-0 bg-black/55 px-3 py-2 text-center text-sm text-yellow-200">
                 {style.owner || style.title}
               </div>
@@ -471,14 +489,14 @@
         );
       }
 
-      function MyStyleCard({ style, onDelete }) {
+      function MyStyleCard({ style, onDelete, onOpen }) {
         return (
-          <article className="group relative border border-slate-700/80 bg-[#252b3a]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
-            <button onClick={() => onDelete(style)} aria-label={`Delete ${style.title}`} className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center border border-yellow-300 bg-black/65 text-xs font-bold text-yellow-200 hover:bg-red-900/80 hover:text-white">
+          <article onClick={() => onOpen?.(style)} className="group relative cursor-pointer border border-slate-700/80 bg-[#252b3a]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+            <button onClick={(event) => { event.stopPropagation(); onDelete(style); }} aria-label={`Delete ${style.title}`} className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center border border-yellow-300 bg-black/65 text-xs font-bold text-yellow-200 hover:bg-red-900/80 hover:text-white">
               X
             </button>
             <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
-              <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover opacity-85 transition duration-300 group-hover:scale-105" />
+              <img src={imageFor(style)} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="h-full w-full object-cover opacity-85 transition duration-300 group-hover:scale-105" />
               <div className="absolute inset-x-0 bottom-0 bg-black/55 px-3 py-2 text-center text-sm text-yellow-200">
                 {style.owner || "Chunbear"}
               </div>
@@ -512,7 +530,7 @@
         );
       }
 
-      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle }) {
+      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle }) {
         const [selectedClass, setSelectedClass] = useState("");
         const [search, setSearch] = useState("");
         const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -590,7 +608,7 @@
 
                   {(mine ? filtered : pageStyles).length ? (
                     <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${mine ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
-                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} />)}
+                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} />)}
                     </div>
                   ) : (
                     <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
@@ -818,6 +836,80 @@
                 }}
               />
             )}
+          </div>
+        );
+      }
+
+      function StyleDetailModal({ styleId, onClose }) {
+        const [style, setStyle] = useState(null);
+        const [error, setError] = useState("");
+        const [activeImage, setActiveImage] = useState("");
+
+        useEffect(() => {
+          if (!styleId) return;
+          setStyle(null);
+          setError("");
+          api(`/api/styles/${styleId}/`)
+            .then((data) => {
+              setStyle(data);
+              const firstGalleryImage = data.images?.[0]?.image;
+              setActiveImage(mediaUrl(firstGalleryImage));
+            })
+            .catch((err) => setError(err.message));
+        }, [styleId]);
+
+        if (!styleId) return null;
+
+        const gallery = style ? (style.images || []).map((image) => ({ id: image.id, image: image.image })) : [];
+        const ownerName = style?.owner || style?.user?.username || "User";
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/75 text-slate-100">
+            <section className="absolute left-1/2 top-1/2 grid h-[min(820px,94vh)] w-[min(1180px,96vw)] -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_1fr] border border-yellow-700/40 bg-[#10151c] shadow-2xl">
+              <header className="relative border-b border-yellow-700/35 bg-black/55 py-2 text-center font-serif text-xl text-yellow-50">
+                {style ? `${ownerName}'s style` : "Style Details"}
+                <button type="button" onClick={onClose} className="absolute right-4 top-1 text-2xl text-yellow-200 hover:text-white">X</button>
+              </header>
+
+              {error ? (
+                <div className="grid place-items-center p-8 text-red-200">{error}</div>
+              ) : !style ? (
+                <div className="grid place-items-center p-8 text-slate-300">Loading...</div>
+              ) : (
+                <div className="game-scroll min-h-0 overflow-y-auto p-4">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                  <main className="min-w-0">
+                    <div className="grid min-h-[360px] max-h-[calc(94vh-150px)] overflow-auto place-items-center border border-slate-700 bg-black/55">
+                      <img src={activeImage || imageFor(style)} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="block max-h-[calc(94vh-170px)] max-w-full object-contain" />
+                    </div>
+                  </main>
+                  <aside className="game-scroll max-h-[calc(94vh-150px)] overflow-y-auto border border-slate-700 bg-black/35 p-3">
+                    <div className="space-y-2 border-b border-yellow-700/35 pb-3">
+                      <h2 className="font-serif text-lg text-yellow-100">{style.title}</h2>
+                      <p className="text-sm text-slate-300">{style.description || "No description."}</p>
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs text-slate-300">
+                        <span className="bg-white/5 py-2">Views {style.views || 0}</span>
+                        <span className="bg-white/5 py-2">Down {style.downloads || 0}</span>
+                        <span className="bg-white/5 py-2">Likes {style.likes || 0}</span>
+                      </div>
+                      <div className="text-sm text-slate-400">{style.game_class}</div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {gallery.map((image) => {
+                        const url = mediaUrl(image.image);
+                        return (
+                          <button key={image.id} type="button" onClick={() => setActiveImage(url)} className={`aspect-square overflow-hidden border bg-black ${activeImage === url ? "border-yellow-400" : "border-slate-700"}`}>
+                            <img src={url} alt="" onError={(event) => handleImageError(event, style.title)} className="h-full w-full object-cover" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+                  </div>
+                </div>
+              )}
+            </section>
           </div>
         );
       }
@@ -1096,6 +1188,7 @@
         const [myStyles, setMyStyles] = useState([]);
         const [classes, setClasses] = useState([]);
         const [registerOpen, setRegisterOpen] = useState(false);
+        const [detailStyleId, setDetailStyleId] = useState(null);
 
         async function loadData(currentUser) {
           const [stylesData, classesData] = await Promise.all([
@@ -1150,13 +1243,14 @@
         let page = <HomePage styles={styles} navigate={navigate} user={user} onLogout={logoutUser} onRegisterStyle={openRegisterStyle} />;
         if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
-        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} />;
-        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} />;
+        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} />;
+        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} />;
 
         return (
           <>
             <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.home || path === routes.all || path === routes.mine} hideHeader={path === routes.home || path === routes.all || path === routes.mine}>{page}</Shell>
             <RegisterStyleModal open={registerOpen} user={user} classes={classes} onClose={() => setRegisterOpen(false)} onCreated={refreshAfterCreate} />
+            <StyleDetailModal styleId={detailStyleId} onClose={() => setDetailStyleId(null)} />
           </>
         );
       }

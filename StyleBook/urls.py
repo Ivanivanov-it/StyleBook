@@ -28,5 +28,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('accounts.urls')),
     path('api/', include('styles.urls')),
-    re_path(r'^(?!api/|admin/).*$', frontend, name='frontend'),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) + [
+    re_path(r'^(?!api/|admin/|media/).*$', frontend, name='frontend'),
+]

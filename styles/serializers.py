@@ -153,6 +153,7 @@ class StyleDetailSerializer(serializers.ModelSerializer):
     images = StyleImageSerializer(many=True,read_only=True)
     likes = serializers.SerializerMethodField()
     downloads = serializers.SerializerMethodField()
+    owner = serializers.CharField(source="user.username", read_only=True)
 
     class Meta:
         model = Style

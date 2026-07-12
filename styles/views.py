@@ -12,6 +12,7 @@ from .serializers import (
     StyleSerializer,
     StyleCreateSerializer,
     StyleListSerializer,
+    StyleDetailSerializer,
 )
 
 class StyleViewSet(viewsets.ModelViewSet):
@@ -32,6 +33,8 @@ class StyleViewSet(viewsets.ModelViewSet):
             return StyleCreateSerializer
         if self.action == 'list':
             return StyleListSerializer
+        if self.action == 'retrieve':
+            return StyleDetailSerializer
 
         return StyleSerializer
 
