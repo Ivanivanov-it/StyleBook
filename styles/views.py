@@ -65,12 +65,12 @@ class StyleViewSet(viewsets.ModelViewSet):
         style = self.get_object()
         user = request.user
 
-        if user in style.likes.all():
+        if style.likes.filter(pk=user.pk).exists():
             style.likes.remove(user)
-            return Response({"liked": False})
+            return Response({"liked": False, "likes": style.likes.count()})
 
         style.likes.add(user)
-        return Response({"liked": True})
+        return Response({"liked": True, "likes": style.likes.count()})
 
     @action(detail=True, methods=['post'])
     def favorite(self,request,pk=None):

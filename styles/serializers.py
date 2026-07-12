@@ -128,6 +128,7 @@ class StyleListSerializer(serializers.ModelSerializer):
     downloads = serializers.SerializerMethodField()
     owner = serializers.CharField(source="user.username", read_only=True)
     is_favorite = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Style
@@ -143,6 +144,7 @@ class StyleListSerializer(serializers.ModelSerializer):
             "downloads",
             "owner",
             "is_favorite",
+            "is_liked",
         ]
 
     def get_likes(self, obj):
@@ -157,12 +159,19 @@ class StyleListSerializer(serializers.ModelSerializer):
             return False
         return obj.favourite_set.filter(user=request.user).exists()
 
+    def get_is_liked(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.likes.filter(pk=request.user.pk).exists()
+
 class StyleDetailSerializer(serializers.ModelSerializer):
     images = StyleImageSerializer(many=True,read_only=True)
     likes = serializers.SerializerMethodField()
     downloads = serializers.SerializerMethodField()
     owner = serializers.CharField(source="user.username", read_only=True)
     is_favorite = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Style
@@ -179,3 +188,9 @@ class StyleDetailSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.favourite_set.filter(user=request.user).exists()
+
+    def get_is_liked(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.likes.filter(pk=request.user.pk).exists()

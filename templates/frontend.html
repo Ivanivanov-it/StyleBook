@@ -271,11 +271,19 @@
         return <span className="grid h-9 w-9 place-items-center text-xl text-sky-200/80">{icons[name] || "▦"}</span>;
       }
 
-      function GameStyleCard({ style, featured, onOpen, onFavorite }) {
+      function GameStyleCard({ style, featured, onOpen, onFavorite, onLike }) {
         return (
           <article onClick={() => onOpen?.(style)} className={`group relative cursor-pointer border bg-[#202838]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${featured ? "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.45)]" : "border-black/80"}`}>
             <button onClick={(event) => { event.stopPropagation(); onFavorite?.(style); }} className={`absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200 ${style.is_favorite ? "text-yellow-300" : "text-slate-300"}`}>
-              {style.is_favorite ? "?" : "?"}
+              {style.is_favorite ? "\u2605" : "\u2606"}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onLike?.(style); }}
+              className={`absolute right-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-pink-200 ${style.is_liked ? "text-pink-300" : "text-slate-300"}`}
+              aria-label={style.is_liked ? `Unlike ${style.title}` : `Like ${style.title}`}
+            >
+              {style.is_liked ? "\u2665" : "\u2661"}
             </button>
             <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
               <img src={imageFor(style)} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105" />
@@ -530,7 +538,7 @@
         );
       }
 
-      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle, onFavoriteStyle }) {
+      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle, onFavoriteStyle, onLikeStyle }) {
         const [selectedClass, setSelectedClass] = useState("");
         const [search, setSearch] = useState("");
         const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -607,8 +615,8 @@
                   )}
 
                   {(mine ? filtered : pageStyles).length ? (
-                    <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${mine ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
-                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} onFavorite={onFavoriteStyle} />)}
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} onFavorite={onFavoriteStyle} onLike={onLikeStyle} />)}
                     </div>
                   ) : (
                     <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
@@ -1247,6 +1255,18 @@
           return result.favorited;
         }
 
+        async function toggleLike(style) {
+          if (!user) {
+            navigate(routes.login);
+            return false;
+          }
+          const result = await api(`/api/styles/${style.id}/like/`, { method: "POST" });
+          const updateLikeState = (item) => item.id === style.id ? { ...item, is_liked: result.liked, likes: result.likes } : item;
+          setStyles((current) => current.map(updateLikeState));
+          setMyStyles((current) => current.map(updateLikeState));
+          return result.liked;
+        }
+
         function openRegisterStyle() {
           if (!user) {
             navigate(routes.login);
@@ -1262,7 +1282,7 @@
         let page = <HomePage styles={styles} navigate={navigate} user={user} onLogout={logoutUser} onRegisterStyle={openRegisterStyle} />;
         if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
-        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
+        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} onLikeStyle={toggleLike} />;
         if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
 
         return (
