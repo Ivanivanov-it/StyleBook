@@ -51,8 +51,16 @@
         { id: "demo-6", title: "Solar Guardian", game_class: "Guardianknight", likes: 132, views: 2100, downloads: 348 },
       ];
 
+      function getCookie(name) {
+        return document.cookie
+          .split(";")
+          .map((cookie) => cookie.trim())
+          .find((cookie) => cookie.startsWith(`${name}=`))
+          ?.slice(name.length + 1) || "";
+      }
+
       function getCsrfToken() {
-        return document.querySelector("meta[name='csrf-token']").content;
+        return decodeURIComponent(getCookie("csrftoken") || document.querySelector("meta[name='csrf-token']")?.content || "");
       }
 
       async function api(path, options = {}) {
@@ -497,9 +505,12 @@
         );
       }
 
-      function MyStyleCard({ style, onDelete, onOpen }) {
+      function MyStyleCard({ style, onDelete, onEdit, onOpen }) {
         return (
           <article onClick={() => onOpen?.(style)} className="group relative cursor-pointer border border-slate-700/80 bg-[#252b3a]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+            <button onClick={(event) => { event.stopPropagation(); onEdit(style); }} aria-label={`Edit ${style.title}`} className="absolute left-2 top-2 z-10 border border-sky-300 bg-black/65 px-3 py-1 text-xs font-bold text-sky-100 hover:bg-sky-800/80 hover:text-white">
+              Edit
+            </button>
             <button onClick={(event) => { event.stopPropagation(); onDelete(style); }} aria-label={`Delete ${style.title}`} className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center border border-yellow-300 bg-black/65 text-xs font-bold text-yellow-200 hover:bg-red-900/80 hover:text-white">
               X
             </button>
@@ -538,7 +549,7 @@
         );
       }
 
-      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle, onFavoriteStyle, onLikeStyle }) {
+      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onEditStyle, onOpenStyle, onFavoriteStyle, onLikeStyle }) {
         const [selectedClass, setSelectedClass] = useState("");
         const [search, setSearch] = useState("");
         const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -616,7 +627,7 @@
 
                   {(mine ? filtered : pageStyles).length ? (
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} onFavorite={onFavoriteStyle} onLike={onLikeStyle} />)}
+                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onEdit={onEditStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} onFavorite={onFavoriteStyle} onLike={onLikeStyle} />)}
                     </div>
                   ) : (
                     <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
@@ -848,6 +859,217 @@
         );
       }
 
+      function EditStyleModal({ styleId, classes, onClose, onUpdated }) {
+        const [style, setStyle] = useState(null);
+        const [title, setTitle] = useState("");
+        const [description, setDescription] = useState("");
+        const [gameClass, setGameClass] = useState("");
+        const [canBeSaved, setCanBeSaved] = useState(false);
+        const [newImages, setNewImages] = useState([]);
+        const [removedImageIds, setRemovedImageIds] = useState([]);
+        const [thumbnailImage, setThumbnailImage] = useState(null);
+        const [thumbnailBlob, setThumbnailBlob] = useState(null);
+        const [cropOpen, setCropOpen] = useState(false);
+        const [error, setError] = useState("");
+        const [saving, setSaving] = useState(false);
+
+        useEffect(() => {
+          if (!styleId) return;
+          setStyle(null);
+          setError("");
+          setNewImages([]);
+          setRemovedImageIds([]);
+          setThumbnailImage(null);
+          setThumbnailBlob(null);
+          setCropOpen(false);
+          api(`/api/styles/${styleId}/`)
+            .then((data) => {
+              setStyle(data);
+              setTitle(data.title || "");
+              setDescription(data.description || "");
+              setGameClass(data.game_class || "");
+              setCanBeSaved(Boolean(data.can_be_saved));
+            })
+            .catch((err) => setError(err.message));
+        }, [styleId]);
+
+        if (!styleId) return null;
+
+        const activeGameClass = gameClass || classes[0]?.value || "Warrior(Male)";
+        const visibleExistingImages = style ? (style.images || []).filter((image) => !removedImageIds.includes(image.id)) : [];
+        const thumbnailPreviewUrl = thumbnailImage ? URL.createObjectURL(thumbnailImage) : imageFor(style || {});
+
+        function chooseNewImages(event) {
+          const selected = Array.from(event.target.files || []);
+          setNewImages((current) => [...current, ...selected]);
+          event.target.value = "";
+        }
+
+        function chooseThumbnailImage(event) {
+          const selected = Array.from(event.target.files || []);
+          const nextImage = selected[0] || null;
+          setThumbnailImage(nextImage);
+          setThumbnailBlob(null);
+          if (nextImage) setCropOpen(true);
+          event.target.value = "";
+        }
+
+        function removeNewImage(indexToRemove) {
+          setNewImages((current) => current.filter((_, index) => index !== indexToRemove));
+        }
+
+        function removeExistingImage(imageId) {
+          setRemovedImageIds((current) => current.includes(imageId) ? current : [...current, imageId]);
+        }
+
+        function clearThumbnailImage() {
+          setThumbnailImage(null);
+          setThumbnailBlob(null);
+          setCropOpen(false);
+        }
+
+        async function submit(event) {
+          event.preventDefault();
+          setError("");
+          if (!title.trim()) {
+            setError("Title is required.");
+            return;
+          }
+          if (thumbnailImage && !thumbnailBlob) {
+            setCropOpen(true);
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append("title", title.trim());
+          formData.append("description", description.trim());
+          formData.append("game_class", activeGameClass);
+          formData.append("can_be_saved", canBeSaved ? "true" : "false");
+          formData.append("requires_custom_file", "false");
+          newImages.forEach((image) => formData.append("image", image));
+          removedImageIds.forEach((imageId) => formData.append("remove_images", imageId));
+          if (thumbnailBlob) formData.append("thumbnail", thumbnailBlob, "thumbnail.jpg");
+
+          setSaving(true);
+          try {
+            await api(`/api/styles/${styleId}/`, { method: "PATCH", body: formData });
+            await onUpdated();
+            onClose();
+          } catch (err) {
+            setError(err.message);
+            setSaving(false);
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 text-slate-100">
+            <form onSubmit={submit} className="absolute left-1/2 top-1/2 grid max-h-[94vh] w-[min(960px,96vw)] -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_1fr_auto] border border-yellow-700/40 bg-[#11161c] shadow-2xl">
+              <header className="relative border-b border-yellow-700/35 bg-black/45 py-2 text-center font-serif text-xl text-yellow-50">
+                Edit Style
+                <button type="button" onClick={onClose} className="absolute right-4 top-1 text-2xl text-yellow-200 hover:text-white">X</button>
+              </header>
+
+              {error && !style ? (
+                <div className="grid min-h-64 place-items-center p-8 text-red-200">{error}</div>
+              ) : !style ? (
+                <div className="grid min-h-64 place-items-center p-8 text-slate-300">Loading...</div>
+              ) : (
+                <section className="game-scroll min-h-0 space-y-3 overflow-y-auto p-4">
+                  <input value={title} onChange={(event) => setTitle(event.target.value.slice(0, 100))} maxLength={100} className="h-10 w-full border border-slate-700 bg-black/35 px-3 text-sm outline-none focus:border-yellow-600" />
+                  <textarea value={description} onChange={(event) => setDescription(event.target.value.slice(0, 250))} maxLength={250} className="h-28 w-full resize-none border border-slate-700 bg-black/35 px-3 py-2 text-sm outline-none focus:border-yellow-600" />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="flex items-center justify-between border border-slate-700 bg-black/30 px-3 py-2 text-sm">
+                      Allow Saving
+                      <input type="checkbox" checked={canBeSaved} onChange={(event) => setCanBeSaved(event.target.checked)} />
+                    </label>
+                    <select value={activeGameClass} onChange={(event) => setGameClass(event.target.value)} className="h-10 border border-slate-700 bg-black/45 px-2 text-sm outline-none">
+                      {classes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-[260px_1fr]">
+                    <div className="space-y-3">
+                      <div className="overflow-hidden border border-slate-700 bg-black">
+                        <img src={thumbnailPreviewUrl} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="aspect-[4/5] w-full object-cover" />
+                        <div className="bg-black/55 py-2 text-center text-sm text-yellow-200">{thumbnailImage ? "New thumbnail preview" : "Current thumbnail"}</div>
+                      </div>
+                      <label className="block cursor-pointer border border-slate-700 bg-[#2a3542] px-4 py-2 text-center text-sm hover:border-yellow-600">
+                        Choose Thumbnail
+                        <input type="file" accept="image/*" onChange={chooseThumbnailImage} className="hidden" />
+                      </label>
+                      {thumbnailImage && (
+                        <div className="grid gap-2">
+                          <button type="button" onClick={() => setCropOpen(true)} className="border border-sky-700 bg-sky-900/60 px-4 py-2 text-sm text-sky-100 hover:border-sky-400">Edit Thumbnail Crop</button>
+                          <button type="button" onClick={clearThumbnailImage} className="border border-red-700 bg-red-950/60 px-4 py-2 text-sm text-red-100 hover:border-red-400">Keep Current Thumbnail</button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm text-slate-300">Style Images</div>
+                        <label className="cursor-pointer border border-slate-700 bg-[#2a3542] px-4 py-2 text-sm hover:border-yellow-600">
+                          Add Images
+                          <input type="file" accept="image/*" multiple onChange={chooseNewImages} className="hidden" />
+                        </label>
+                      </div>
+                      <div className="grid max-h-[420px] grid-cols-2 gap-3 overflow-y-auto pr-1 md:grid-cols-3">
+                        {visibleExistingImages.map((image) => {
+                          const url = mediaUrl(image.image);
+                          return (
+                            <div key={image.id} className="relative overflow-hidden border border-slate-700 bg-black">
+                              <button type="button" onClick={() => removeExistingImage(image.id)} className="absolute right-1 top-1 z-10 border border-red-400 bg-black/75 px-2 py-1 text-xs text-red-100 hover:bg-red-800">
+                                Remove
+                              </button>
+                              <img src={url} alt="" onError={(event) => handleImageError(event, style.title)} className="aspect-square w-full object-cover" />
+                            </div>
+                          );
+                        })}
+                        {newImages.map((image, index) => (
+                          <div key={`${image.name}-${index}`} className="relative overflow-hidden border border-sky-700 bg-black">
+                            <button type="button" onClick={() => removeNewImage(index)} className="absolute right-1 top-1 z-10 border border-red-400 bg-black/75 px-2 py-1 text-xs text-red-100 hover:bg-red-800">
+                              Remove
+                            </button>
+                            <img src={URL.createObjectURL(image)} alt="" className="aspect-square w-full object-cover" />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/65 py-1 text-center text-xs text-sky-100">New</div>
+                          </div>
+                        ))}
+                        {!visibleExistingImages.length && !newImages.length && (
+                          <div className="col-span-full grid min-h-40 place-items-center border border-slate-700 bg-[#171d23] text-sm text-slate-400">
+                            No images selected.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {error && <p className="border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</p>}
+                </section>
+              )}
+
+              <footer className="flex justify-end gap-2 border-t border-yellow-700/35 p-3">
+                <button type="button" onClick={onClose} className="h-10 w-32 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Cancel</button>
+                <button disabled={!style || saving} className="h-10 w-32 border border-black bg-yellow-700/80 text-yellow-50 disabled:bg-slate-800 disabled:text-slate-500">
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </footer>
+
+            </form>
+            {cropOpen && thumbnailImage && (
+              <ThumbnailCropper
+                file={thumbnailImage}
+                images={[thumbnailImage]}
+                onClose={() => setCropOpen(false)}
+                onApply={(blob) => {
+                  setThumbnailBlob(blob);
+                  setCropOpen(false);
+                }}
+              />
+            )}
+          </div>
+        );
+      }
+
       function StyleDetailModal({ styleId, onClose, onFavorite }) {
         const [style, setStyle] = useState(null);
         const [error, setError] = useState("");
@@ -938,6 +1160,7 @@
         const [pan, setPan] = useState({ x: 0, y: 0 });
         const [flipped, setFlipped] = useState(false);
         const [dragging, setDragging] = useState(null);
+        const [dragStart, setDragStart] = useState(null);
         const imageUrl = URL.createObjectURL(file);
         const cropBoxStyle = {
           left: `${selection.x}%`,
@@ -959,25 +1182,38 @@
           });
         }
 
+        function startDrag(event, mode) {
+          event.preventDefault();
+          cropAreaRef.current?.setPointerCapture?.(event.pointerId);
+          setDragging(mode);
+          setDragStart({ x: event.clientX, y: event.clientY });
+          if (mode === "crop") moveCropWindow(event);
+        }
+
+        function stopDrag(event) {
+          if (cropAreaRef.current?.hasPointerCapture?.(event.pointerId)) {
+            cropAreaRef.current.releasePointerCapture(event.pointerId);
+          }
+          setDragging(null);
+          setDragStart(null);
+        }
+
         function panImage(event) {
           if (zoom <= 1) return;
           const rect = cropAreaRef.current.getBoundingClientRect();
-          const dx = (event.movementX / rect.width) * 100;
-          const dy = (event.movementY / rect.height) * 100;
-          const limit = Math.max(0, (zoom - 1) * 22);
+          const dx = dragStart ? ((event.clientX - dragStart.x) / rect.width) * 100 : 0;
+          const dy = dragStart ? ((event.clientY - dragStart.y) / rect.height) * 100 : 0;
+          const limit = Math.max(0, ((zoom - 1) / zoom) * 50);
           setPan((current) => {
             return {
               x: Math.max(-limit, Math.min(limit, current.x + dx)),
               y: Math.max(-limit, Math.min(limit, current.y + dy)),
             };
           });
+          setDragStart({ x: event.clientX, y: event.clientY });
         }
 
         function handleDrag(event) {
-          if (event.buttons !== 1) {
-            setDragging(null);
-            return;
-          }
           if (dragging === "crop") moveCropWindow(event);
           if (dragging === "image") panImage(event);
         }
@@ -1047,21 +1283,23 @@
             <div className="mx-auto mt-3 w-[92vw]">
               <div
                 ref={cropAreaRef}
-                onMouseMove={handleDrag}
-                onMouseUp={() => setDragging(null)}
-                onMouseLeave={() => setDragging(null)}
-                className="relative mx-auto h-[min(580px,70vh)] max-w-[1028px] overflow-hidden border-4 border-yellow-400 bg-black"
+                onPointerMove={handleDrag}
+                onPointerUp={stopDrag}
+                onPointerCancel={stopDrag}
+                onPointerDown={(event) => { if (event.target === event.currentTarget && zoom > 1) startDrag(event, "image"); }}
+                className={`relative mx-auto h-[min(580px,70vh)] max-w-[1028px] overflow-hidden border-4 border-yellow-400 bg-black ${zoom > 1 ? "cursor-move" : "cursor-default"}`}
               >
                 <img
                   src={imageUrl}
                   alt="Crop source"
                   style={sourceImageStyle}
-                  onMouseDown={(event) => { event.preventDefault(); if (zoom > 1) setDragging("image"); }}
+                  onPointerDown={(event) => { if (zoom > 1) startDrag(event, "image"); }}
                   draggable="false"
+                  onDragStart={(event) => event.preventDefault()}
                   className={`h-full w-full object-contain opacity-65 transition-transform duration-150 ${zoom > 1 ? "cursor-move" : "cursor-default"}`}
                 />
                 <div
-                  onMouseDown={(event) => { event.stopPropagation(); setDragging("crop"); moveCropWindow(event); }}
+                  onPointerDown={(event) => { event.stopPropagation(); startDrag(event, "crop"); }}
                   className="absolute cursor-grab overflow-hidden border-4 border-orange-400 active:cursor-grabbing"
                   style={cropBoxStyle}
                 >
@@ -1075,9 +1313,10 @@
               </div>
               <label className="mt-3 flex items-center gap-3 text-sm text-slate-300">
                 Image zoom
-                <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => { const nextZoom = Number(event.target.value); setZoom(nextZoom); if (nextZoom <= 1) setPan({ x: 0, y: 0 }); }} className="w-64" />
+                <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => { const nextZoom = Number(event.target.value); const nextLimit = Math.max(0, ((nextZoom - 1) / nextZoom) * 50); setZoom(nextZoom); setPan((current) => nextZoom <= 1 ? { x: 0, y: 0 } : { x: Math.max(-nextLimit, Math.min(nextLimit, current.x)), y: Math.max(-nextLimit, Math.min(nextLimit, current.y)) }); }} className="w-64" />
               </label>
-              <div className="mt-3 flex justify-end gap-2">
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={() => setPan({ x: 0, y: 0 })} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Center Image</button>
                 <button type="button" onClick={() => setFlipped((current) => !current)} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Flip Left/Right</button>
                 <button type="button" onClick={applyCrop} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Post</button>
                 <button type="button" onClick={onClose} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Close</button>
@@ -1204,7 +1443,9 @@
         const [myStyles, setMyStyles] = useState([]);
         const [classes, setClasses] = useState([]);
         const [registerOpen, setRegisterOpen] = useState(false);
+        const [editStyleId, setEditStyleId] = useState(null);
         const [detailStyleId, setDetailStyleId] = useState(null);
+        const [actionError, setActionError] = useState("");
 
         async function loadData(currentUser) {
           const [stylesData, classesData] = await Promise.all([
@@ -1249,10 +1490,16 @@
             navigate(routes.login);
             return false;
           }
-          const result = await api(`/api/styles/${style.id}/favorite/`, { method: "POST" });
-          setStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
-          setMyStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
-          return result.favorited;
+          setActionError("");
+          try {
+            const result = await api(`/api/styles/${style.id}/favorite/`, { method: "POST" });
+            setStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
+            setMyStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
+            return result.favorited;
+          } catch (err) {
+            setActionError(err.message);
+            throw err;
+          }
         }
 
         async function toggleLike(style) {
@@ -1260,11 +1507,17 @@
             navigate(routes.login);
             return false;
           }
-          const result = await api(`/api/styles/${style.id}/like/`, { method: "POST" });
-          const updateLikeState = (item) => item.id === style.id ? { ...item, is_liked: result.liked, likes: result.likes } : item;
-          setStyles((current) => current.map(updateLikeState));
-          setMyStyles((current) => current.map(updateLikeState));
-          return result.liked;
+          setActionError("");
+          try {
+            const result = await api(`/api/styles/${style.id}/like/`, { method: "POST" });
+            const updateLikeState = (item) => item.id === style.id ? { ...item, is_liked: result.liked, likes: result.likes } : item;
+            setStyles((current) => current.map(updateLikeState));
+            setMyStyles((current) => current.map(updateLikeState));
+            return result.liked;
+          } catch (err) {
+            setActionError(err.message);
+            throw err;
+          }
         }
 
         function openRegisterStyle() {
@@ -1283,13 +1536,19 @@
         if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} onLikeStyle={toggleLike} />;
-        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
+        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onEditStyle={(style) => setEditStyleId(style.id)} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
 
         return (
           <>
             <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.home || path === routes.all || path === routes.mine} hideHeader={path === routes.home || path === routes.all || path === routes.mine}>{page}</Shell>
             <RegisterStyleModal open={registerOpen} user={user} classes={classes} onClose={() => setRegisterOpen(false)} onCreated={refreshAfterCreate} />
+            <EditStyleModal styleId={editStyleId} classes={classes} onClose={() => setEditStyleId(null)} onUpdated={refreshAfterCreate} />
             <StyleDetailModal styleId={detailStyleId} onClose={() => setDetailStyleId(null)} onFavorite={toggleFavorite} />
+            {actionError && (
+              <div className="fixed bottom-4 left-1/2 z-[60] max-w-[92vw] -translate-x-1/2 border border-red-500/50 bg-red-950/90 px-4 py-2 text-sm text-red-100 shadow-2xl">
+                {actionError}
+              </div>
+            )}
           </>
         );
       }

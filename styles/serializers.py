@@ -46,6 +46,12 @@ class StyleSerializer(serializers.ModelSerializer):
         images = request.FILES.getlist("image")
         files = request.FILES.getlist("files")
         thumbnail = request.FILES.get("thumbnail")
+        remove_image_ids = []
+        for raw_id in request.data.getlist("remove_images"):
+            try:
+                remove_image_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -53,6 +59,8 @@ class StyleSerializer(serializers.ModelSerializer):
         for img in images:
             StyleImage.objects.create(style=instance, image=img)
 
+        if remove_image_ids:
+            instance.images.filter(id__in=remove_image_ids).delete()
 
         if instance.requires_custom_file and files:
             for f in files:
@@ -61,19 +69,16 @@ class StyleSerializer(serializers.ModelSerializer):
 
         instance.thumbnail = self._resolve_thumbnail_update(
             instance,
-            thumbnail,
-            images
+            thumbnail
         )
 
         instance.save()
         return instance
 
-    def _resolve_thumbnail_update(self, instance, explicit, new_images):
+    def _resolve_thumbnail_update(self, instance, explicit):
 
         if explicit:
             return explicit
-        if new_images:
-            return new_images[0]
         return instance.thumbnail
 
 class StyleCreateSerializer(serializers.ModelSerializer):

@@ -4,6 +4,7 @@ from django.shortcuts import render
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
@@ -40,11 +41,22 @@ class StyleViewSet(viewsets.ModelViewSet):
 
     def retrieve(self,request,*args,**kwargs):
         instance = self.get_object()
-        instance.views += 1
-        instance.save(update_fields=['views'])
+        if request.user != instance.user:
+            instance.views += 1
+            instance.save(update_fields=['views'])
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        if serializer.instance.user != self.request.user:
+            raise PermissionDenied("You can only edit your own styles.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.user != self.request.user:
+            raise PermissionDenied("You can only delete your own styles.")
+        instance.delete()
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def mine(self, request):
@@ -60,7 +72,7 @@ class StyleViewSet(viewsets.ModelViewSet):
         ]
         return Response(classes)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def like(self,request,pk=None):
         style = self.get_object()
         user = request.user
@@ -72,7 +84,7 @@ class StyleViewSet(viewsets.ModelViewSet):
         style.likes.add(user)
         return Response({"liked": True, "likes": style.likes.count()})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def favorite(self,request,pk=None):
         style = self.get_object()
         user = request.user
@@ -81,9 +93,9 @@ class StyleViewSet(viewsets.ModelViewSet):
 
         if not created:
             fav.delete()
-            return Response({"favorited": False})
+            return Response({"favorited": False, "favorites": style.favourite_set.count()})
 
-        return Response({"favorited": True})
+        return Response({"favorited": True, "favorites": style.favourite_set.count()})
 
     @action(detail=True, methods=['post'])
     def download(self,request,pk=None):
