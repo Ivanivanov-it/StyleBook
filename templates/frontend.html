@@ -271,11 +271,11 @@
         return <span className="grid h-9 w-9 place-items-center text-xl text-sky-200/80">{icons[name] || "▦"}</span>;
       }
 
-      function GameStyleCard({ style, featured, onOpen }) {
+      function GameStyleCard({ style, featured, onOpen, onFavorite }) {
         return (
           <article onClick={() => onOpen?.(style)} className={`group relative cursor-pointer border bg-[#202838]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.75)] ${featured ? "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.45)]" : "border-black/80"}`}>
-            <button onClick={(event) => event.stopPropagation()} className="absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl text-slate-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200">
-              ☆
+            <button onClick={(event) => { event.stopPropagation(); onFavorite?.(style); }} className={`absolute left-3 top-3 z-10 grid h-7 w-7 place-items-center text-2xl drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] hover:text-yellow-200 ${style.is_favorite ? "text-yellow-300" : "text-slate-300"}`}>
+              {style.is_favorite ? "?" : "?"}
             </button>
             <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
               <img src={imageFor(style)} alt={style.title} onError={(event) => handleImageError(event, style.title)} className="h-full w-full object-cover opacity-95 transition duration-300 group-hover:scale-105" />
@@ -530,7 +530,7 @@
         );
       }
 
-      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle }) {
+      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle, onOpenStyle, onFavoriteStyle }) {
         const [selectedClass, setSelectedClass] = useState("");
         const [search, setSearch] = useState("");
         const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -608,7 +608,7 @@
 
                   {(mine ? filtered : pageStyles).length ? (
                     <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${mine ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
-                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} />)}
+                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} onOpen={onOpenStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} onOpen={onOpenStyle} onFavorite={onFavoriteStyle} />)}
                     </div>
                   ) : (
                     <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
@@ -840,7 +840,7 @@
         );
       }
 
-      function StyleDetailModal({ styleId, onClose }) {
+      function StyleDetailModal({ styleId, onClose, onFavorite }) {
         const [style, setStyle] = useState(null);
         const [error, setError] = useState("");
         const [activeImage, setActiveImage] = useState("");
@@ -862,6 +862,11 @@
 
         const gallery = style ? (style.images || []).map((image) => ({ id: image.id, image: image.image })) : [];
         const ownerName = style?.owner || style?.user?.username || "User";
+
+        async function toggleDetailFavorite() {
+          const favorited = await onFavorite(style);
+          setStyle((current) => ({ ...current, is_favorite: favorited }));
+        }
 
         return (
           <div className="fixed inset-0 z-50 bg-black/75 text-slate-100">
@@ -893,6 +898,9 @@
                         <span className="bg-white/5 py-2">Likes {style.likes || 0}</span>
                       </div>
                       <div className="text-sm text-slate-400">{style.game_class}</div>
+                      <button type="button" onClick={toggleDetailFavorite} className={`w-full border px-4 py-2 text-sm ${style.is_favorite ? "border-yellow-500 bg-yellow-700/60 text-yellow-50" : "border-slate-700 bg-[#202838] text-slate-200 hover:border-yellow-600"}`}>
+                        {style.is_favorite ? "Favorited" : "Add Favorite"}
+                      </button>
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1228,6 +1236,17 @@
           setMyStyles((current) => current.filter((style) => style.id !== styleId));
         }
 
+        async function toggleFavorite(style) {
+          if (!user) {
+            navigate(routes.login);
+            return false;
+          }
+          const result = await api(`/api/styles/${style.id}/favorite/`, { method: "POST" });
+          setStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
+          setMyStyles((current) => current.map((item) => item.id === style.id ? { ...item, is_favorite: result.favorited } : item));
+          return result.favorited;
+        }
+
         function openRegisterStyle() {
           if (!user) {
             navigate(routes.login);
@@ -1243,14 +1262,14 @@
         let page = <HomePage styles={styles} navigate={navigate} user={user} onLogout={logoutUser} onRegisterStyle={openRegisterStyle} />;
         if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
-        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} />;
-        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} />;
+        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
+        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} onOpenStyle={(style) => setDetailStyleId(style.id)} onFavoriteStyle={toggleFavorite} />;
 
         return (
           <>
             <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.home || path === routes.all || path === routes.mine} hideHeader={path === routes.home || path === routes.all || path === routes.mine}>{page}</Shell>
             <RegisterStyleModal open={registerOpen} user={user} classes={classes} onClose={() => setRegisterOpen(false)} onCreated={refreshAfterCreate} />
-            <StyleDetailModal styleId={detailStyleId} onClose={() => setDetailStyleId(null)} />
+            <StyleDetailModal styleId={detailStyleId} onClose={() => setDetailStyleId(null)} onFavorite={toggleFavorite} />
           </>
         );
       }

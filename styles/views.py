@@ -83,7 +83,7 @@ class StyleViewSet(viewsets.ModelViewSet):
             fav.delete()
             return Response({"favorited": False})
 
-        return Response({"favorited": False})
+        return Response({"favorited": True})
 
     @action(detail=True, methods=['post'])
     def download(self,request,pk=None):
