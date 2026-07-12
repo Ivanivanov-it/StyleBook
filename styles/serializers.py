@@ -144,6 +144,7 @@ class StyleListSerializer(serializers.ModelSerializer):
             "description",
             "game_class",
             "thumbnail",
+            "can_be_saved",
             "likes",
             "views",
             "downloads",

@@ -33,3 +33,21 @@ class StyleInteractionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"favorited": True, "favorites": 1})
         self.assertTrue(Favourite.objects.filter(user=self.other_user, style=self.style).exists())
+
+    def test_downloadable_style_can_be_downloaded_without_login(self):
+        self.style.can_be_saved = True
+        self.style.save(update_fields=["can_be_saved"])
+        anonymous_client = APIClient()
+
+        response = anonymous_client.post(f"/api/styles/{self.style.id}/download/")
+
+        self.assertEqual(response.status_code, 200)
+        self.style.refresh_from_db()
+        self.assertEqual(self.style.downloads, 1)
+
+    def test_non_downloadable_style_cannot_be_downloaded(self):
+        anonymous_client = APIClient()
+
+        response = anonymous_client.post(f"/api/styles/{self.style.id}/download/")
+
+        self.assertEqual(response.status_code, 403)

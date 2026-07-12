@@ -6,7 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 
 from .models import Style, Favourite
 from .serializers import (
@@ -97,9 +97,11 @@ class StyleViewSet(viewsets.ModelViewSet):
 
         return Response({"favorited": True, "favorites": style.favourite_set.count()})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def download(self,request,pk=None):
         style = self.get_object()
+        if not style.can_be_saved:
+            raise PermissionDenied("This style cannot be downloaded.")
         style.downloads += 1
         style.save(update_fields=['downloads'])
 
