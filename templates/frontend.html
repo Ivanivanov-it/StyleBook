@@ -10,12 +10,29 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      .game-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(180, 138, 32, 0.7) rgba(2, 6, 23, 0.35);
+      }
+      .game-scroll::-webkit-scrollbar {
+        width: 8px;
+      }
+      .game-scroll::-webkit-scrollbar-track {
+        background: rgba(2, 6, 23, 0.35);
+        border-left: 1px solid rgba(120, 86, 24, 0.35);
+      }
+      .game-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(234, 179, 8, 0.85), rgba(113, 63, 18, 0.9));
+        border: 1px solid rgba(250, 204, 21, 0.55);
+      }
+    </style>
   </head>
   <body class="bg-slate-950 text-slate-100">
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useEffect, useMemo, useState } = React;
+      const { useEffect, useMemo, useRef, useState } = React;
 
       const routes = {
         home: "/",
@@ -39,10 +56,11 @@
       }
 
       async function api(path, options = {}) {
+        const isFormData = options.body instanceof FormData;
         const response = await fetch(path, {
           credentials: "same-origin",
           headers: {
-            "Content-Type": "application/json",
+            ...(isFormData ? {} : { "Content-Type": "application/json" }),
             "X-CSRFToken": getCsrfToken(),
             ...(options.headers || {}),
           },
@@ -88,7 +106,7 @@
         return [path, navigate];
       }
 
-      function Shell({ children, user, navigate, onLogout, wide }) {
+      function Shell({ children, user, navigate, onLogout, wide, hideHeader }) {
         const navItems = [
           ["Style Home", routes.home],
           ["View all", routes.all],
@@ -97,39 +115,41 @@
 
         return (
           <div className="min-h-screen">
-            <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
-              <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-                <button onClick={() => navigate(routes.home)} className="text-xl font-black tracking-tight">
-                  Style<span className="text-cyan-300">Book</span>
-                </button>
-                <nav className="hidden items-center gap-2 md:flex">
-                  {navItems.map(([label, href]) => (
-                    <button key={href} onClick={() => navigate(href)} className="rounded-full px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white">
-                      {label}
-                    </button>
-                  ))}
-                </nav>
-                <div className="flex items-center gap-2">
-                  {user ? (
-                    <>
-                      <span className="hidden text-sm text-slate-400 sm:block">{user.username}</span>
-                      <button onClick={onLogout} className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/10">
-                        Logout
+            {!hideHeader && (
+              <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+                <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
+                  <button onClick={() => navigate(routes.home)} className="text-xl font-black tracking-tight">
+                    Style<span className="text-cyan-300">Book</span>
+                  </button>
+                  <nav className="hidden items-center gap-2 md:flex">
+                    {navItems.map(([label, href]) => (
+                      <button key={href} onClick={() => navigate(href)} className="rounded-full px-4 py-2 text-sm text-slate-300 hover:bg-white/10 hover:text-white">
+                        {label}
                       </button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => navigate(routes.login)} className="rounded-full px-4 py-2 text-sm hover:bg-white/10">
-                        Login
-                      </button>
-                      <button onClick={() => navigate(routes.register)} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-200">
-                        Register
-                      </button>
-                    </>
-                  )}
+                    ))}
+                  </nav>
+                  <div className="flex items-center gap-2">
+                    {user ? (
+                      <>
+                        <span className="hidden text-sm text-slate-400 sm:block">{user.username}</span>
+                        <button onClick={onLogout} className="rounded-full border border-white/10 px-4 py-2 text-sm hover:bg-white/10">
+                          Logout
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => navigate(routes.login)} className="rounded-full px-4 py-2 text-sm hover:bg-white/10">
+                          Login
+                        </button>
+                        <button onClick={() => navigate(routes.register)} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-200">
+                          Register
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </header>
+              </header>
+            )}
             <main className={wide ? "px-5 py-8" : "mx-auto max-w-7xl px-5 py-8"}>{children}</main>
           </div>
         );
@@ -287,33 +307,674 @@
         );
       }
 
-      function HomePage({ styles, navigate }) {
-        const randomStyles = useMemo(() => styles.slice().sort(() => Math.random() - 0.5).slice(0, 8), [styles]);
+      function GameTopBar({ active, navigate, user, onLogout }) {
+        const tabs = [
+          ["Style Home", routes.home, "home"],
+          ["View All", routes.all, "all"],
+          ["My Style", routes.mine, "mine"],
+        ];
 
         return (
-          <div className="space-y-10">
-            <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-8">
-              <p className="text-sm font-bold uppercase tracking-[0.25em] text-cyan-300">Style Home</p>
-              <h1 className="mt-3 max-w-3xl text-4xl font-black md:text-6xl">Discover registered styles across every class.</h1>
-              <button onClick={() => navigate(routes.all)} className="mt-6 rounded-full bg-cyan-300 px-6 py-3 font-bold text-slate-950 hover:bg-cyan-200">
-                View all styles
+          <header className="border-b border-yellow-700/25 bg-black/55">
+            <div className="relative py-1 text-center font-serif text-lg text-yellow-50 shadow-[0_2px_16px_rgba(250,204,21,0.18)]">
+              Style Book
+              <div className="absolute right-4 top-1/2 flex -translate-y-1/2 items-center gap-2 font-sans text-xs">
+                {user ? (
+                  <>
+                    <span className="hidden max-w-32 truncate text-slate-300 sm:block">{user.username}</span>
+                    <button onClick={onLogout} className="border border-yellow-700/70 bg-black/45 px-3 py-1 text-yellow-50 hover:bg-yellow-700/45">
+                      Logout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => navigate(routes.login)} className="border border-slate-600 bg-black/45 px-3 py-1 text-slate-200 hover:border-yellow-600 hover:text-yellow-50">
+                      Login
+                    </button>
+                    <button onClick={() => navigate(routes.register)} className="border border-yellow-700 bg-yellow-700/80 px-3 py-1 text-yellow-50 hover:bg-yellow-600">
+                      Register
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            <nav className="grid max-w-3xl grid-cols-3 text-center font-serif text-base text-slate-400 md:text-lg">
+              {tabs.map(([label, href, key]) => (
+                <button
+                  key={href}
+                  onClick={() => navigate(href)}
+                  className={`${active === key ? "bg-gradient-to-b from-yellow-100/45 via-yellow-700/35 to-transparent font-semibold text-yellow-50 shadow-[inset_0_-1px_0_rgba(250,204,21,0.8),0_0_22px_rgba(250,204,21,0.24)]" : "hover:text-yellow-100"} border-r border-slate-700/70 py-2 last:border-r-0`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </header>
+        );
+      }
+
+      function HomeHotCarousel({ styles }) {
+        const [index, setIndex] = useState(0);
+        const hotStyles = styles.slice().sort((a, b) => ((b.likes || 0) + (b.views || 0)) - ((a.likes || 0) + (a.views || 0))).slice(0, 5);
+        const active = hotStyles[index] || hotStyles[0];
+
+        if (!active) return null;
+
+        return (
+          <section className="relative border border-sky-300/90 bg-[#111827]/90 shadow-[0_0_20px_rgba(96,165,250,0.55),inset_0_0_40px_rgba(30,64,175,0.35)]">
+            <div className="bg-[linear-gradient(135deg,rgba(59,130,246,0.35),rgba(15,23,42,0.85)_55%,rgba(2,6,23,0.95))] px-5 py-7 text-center">
+              <h2 className="font-serif text-3xl text-indigo-200 drop-shadow-[0_0_14px_rgba(129,140,248,0.75)] md:text-4xl">Hot Style</h2>
+              <p className="mt-3 text-sm text-slate-100 md:text-base">A style that's all the rage these days.</p>
+            </div>
+            <div className="relative aspect-[4/5] overflow-hidden border-y border-sky-300/35 bg-slate-950">
+              <img src={imageFor(active)} alt={active.title} className="h-full w-full object-cover" />
+              <button aria-label="Previous hot style" onClick={() => setIndex((index - 1 + hotStyles.length) % hotStyles.length)} className="absolute left-2 top-1/2 grid h-14 w-9 -translate-y-1/2 place-items-center border border-slate-500/70 bg-black/35 text-3xl text-slate-300 hover:border-sky-300 hover:text-white">
+                &lt;
               </button>
-            </section>
-            <HotCarousel styles={styles} />
-            <section>
-              <div className="mb-4 flex items-end justify-between">
-                <h2 className="text-2xl font-black">Random styles</h2>
-                <button onClick={() => navigate(routes.all)} className="text-sm text-cyan-300 hover:underline">View all</button>
+              <button aria-label="Next hot style" onClick={() => setIndex((index + 1) % hotStyles.length)} className="absolute right-2 top-1/2 grid h-14 w-9 -translate-y-1/2 place-items-center border border-slate-500/70 bg-black/35 text-3xl text-slate-300 hover:border-sky-300 hover:text-white">
+                &gt;
+              </button>
+            </div>
+            <div className="bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,64,175,0.55))] px-5 py-5 text-center">
+              <h3 className="truncate font-serif text-xl text-yellow-100">{active.owner || active.title}</h3>
+              <div className="mt-5 grid grid-cols-3 gap-3 text-sm text-slate-300">
+                <span className="truncate">View {active.views || 0}</span>
+                <span className="truncate">Down {active.downloads || 0}</span>
+                <span className="truncate">Like {active.likes || 0}</span>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                {randomStyles.map((style) => <StyleCard key={style.id} style={style} />)}
+              <div className="mt-5 flex justify-center gap-3">
+                {hotStyles.map((style, dotIndex) => (
+                  <button
+                    key={style.id}
+                    aria-label={`Show hot style ${dotIndex + 1}`}
+                    onClick={() => setIndex(dotIndex)}
+                    className={`h-3 w-3 rounded-full ${dotIndex === index ? "bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)]" : "bg-slate-400/70"}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      function HomePage({ styles, navigate, user, onLogout, onRegisterStyle }) {
+        const randomStyles = useMemo(() => styles.slice().sort(() => Math.random() - 0.5).slice(0, 7), [styles]);
+        const centerStyles = randomStyles.slice(0, 4);
+        const rightStyles = randomStyles.slice(4, 7);
+
+        return (
+          <div className="-mx-5 -my-8 min-h-screen overflow-hidden bg-[radial-gradient(circle_at_52%_26%,rgba(79,70,229,0.38),transparent_24%),radial-gradient(circle_at_84%_68%,rgba(59,130,246,0.24),transparent_26%),linear-gradient(135deg,#050816,#111437_42%,#070b18)] text-slate-100">
+            <GameTopBar active="home" navigate={navigate} user={user} onLogout={onLogout} />
+            <section className="relative mx-auto grid max-w-[1420px] gap-8 px-4 py-8 lg:grid-cols-[374px_1fr_434px] xl:gap-14">
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,transparent_0_34%,rgba(96,165,250,0.12)_35%,transparent_38%_100%)]" />
+              <div className="relative z-10">
+                <HomeHotCarousel styles={styles} />
+              </div>
+
+              <div className="relative z-10 flex min-h-[620px] flex-col justify-center">
+                <div className="mb-12 text-center">
+                  <div className="mx-auto mb-2 h-28 w-48 border border-indigo-300/10 bg-[radial-gradient(circle,rgba(129,140,248,0.35),transparent_58%)] opacity-80" />
+                  <h1 className="font-serif text-5xl text-white drop-shadow-[0_0_18px_rgba(147,197,253,0.95)] md:text-6xl xl:text-7xl">STYLE BOOK</h1>
+                  <p className="mt-4 text-lg text-slate-200">Suggested Styles</p>
+                </div>
+
+                <div className="mx-auto grid w-full max-w-[470px] grid-cols-4 gap-3">
+                  {centerStyles[0] && (
+                    <button onClick={() => navigate(routes.all)} className="col-span-2 row-span-2 aspect-[4/5] overflow-hidden border border-yellow-100/35 bg-black/40 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+                      <img src={imageFor(centerStyles[0])} alt={centerStyles[0].title} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                    </button>
+                  )}
+                  {centerStyles.slice(1, 4).map((style) => (
+                    <button key={style.id} onClick={() => navigate(routes.all)} className="aspect-square overflow-hidden border border-yellow-100/30 bg-black/40 shadow-[0_0_0_1px_rgba(0,0,0,0.8)]">
+                      <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-10 text-center text-sm text-slate-200">
+                  <span className="text-yellow-300">!</span> Randomly selects one of the registered styles and updates at regular intervals.
+                </p>
+              </div>
+
+              <div className="relative z-10 grid content-center gap-11">
+                <div className="grid grid-cols-2 gap-7">
+                  {rightStyles.slice(0, 2).map((style) => (
+                    <button key={style.id} onClick={() => navigate(routes.all)} className="aspect-[4/5] overflow-hidden border border-yellow-100/35 bg-black/45 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+                      <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                    </button>
+                  ))}
+                </div>
+                {rightStyles[2] && (
+                  <button onClick={() => navigate(routes.all)} className="aspect-[16/9] overflow-hidden border border-yellow-100/35 bg-black/45 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+                    <img src={imageFor(rightStyles[2])} alt={rightStyles[2].title} className="h-full w-full object-cover transition duration-300 hover:scale-105" />
+                  </button>
+                )}
               </div>
             </section>
+
+            <footer className="border-t border-yellow-700/35 bg-black/45 px-4 py-3">
+              <div className="mx-auto flex max-w-[1420px] items-center justify-between gap-4">
+                <div className="text-sm text-slate-200">
+                  Registered Style <span className="text-yellow-300">{styles.length}</span>/40
+                </div>
+                <button onClick={onRegisterStyle} className="border border-yellow-700 bg-yellow-700/85 px-9 py-3 text-sm text-yellow-50 hover:bg-yellow-600">
+                  Register Style
+                </button>
+              </div>
+            </footer>
           </div>
         );
       }
 
-      function ListingPage({ title, styles, classes, mine, user, navigate }) {
+      function MyStyleCard({ style, onDelete }) {
+        return (
+          <article className="group relative border border-slate-700/80 bg-[#252b3a]/95 shadow-[0_0_0_1px_rgba(0,0,0,0.85)]">
+            <button onClick={() => onDelete(style)} aria-label={`Delete ${style.title}`} className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center border border-yellow-300 bg-black/65 text-xs font-bold text-yellow-200 hover:bg-red-900/80 hover:text-white">
+              X
+            </button>
+            <div className="relative aspect-[4/5] overflow-hidden bg-slate-950">
+              <img src={imageFor(style)} alt={style.title} className="h-full w-full object-cover opacity-85 transition duration-300 group-hover:scale-105" />
+              <div className="absolute inset-x-0 bottom-0 bg-black/55 px-3 py-2 text-center text-sm text-yellow-200">
+                {style.owner || "Chunbear"}
+              </div>
+            </div>
+            <div className="bg-gradient-to-b from-[#2c3244] to-[#222837] px-3 py-2">
+              <h3 className="truncate text-center text-sm text-white">{style.title}</h3>
+              <div className="mt-2 grid grid-cols-3 text-xs text-slate-300">
+                <span className="flex items-center justify-center">View {style.views || 0}</span>
+                <span className="flex items-center justify-center">Down {style.downloads || 0}</span>
+                <span className="flex items-center justify-center">Like {style.likes || 0}</span>
+              </div>
+            </div>
+          </article>
+        );
+      }
+
+      function ClassSidebar({ classes, selectedClass, setSelectedClass }) {
+        return (
+          <aside className="min-h-[640px] border border-slate-800/80 bg-black/45">
+            <button onClick={() => setSelectedClass("")} className={`flex w-full items-center gap-5 border-b border-slate-800 px-5 py-3 text-left ${!selectedClass ? "border-sky-500 bg-sky-500/20 text-white shadow-[inset_0_0_20px_rgba(56,189,248,0.2)]" : "text-slate-100 hover:bg-white/5"}`}>
+              <ClassIcon name="All" />
+              <span>All</span>
+            </button>
+            {classes.map((item) => (
+              <button key={item.value} onClick={() => setSelectedClass(item.value)} className={`flex w-full items-center gap-5 border-b border-slate-800 px-5 py-3 text-left ${selectedClass === item.value ? "border-sky-500 bg-sky-500/20 text-white shadow-[inset_0_0_20px_rgba(56,189,248,0.2)]" : "text-slate-100 hover:bg-white/5"}`}>
+                <ClassIcon name={item.value} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </aside>
+        );
+      }
+
+      function ListingPage({ title, styles, classes, mine, user, navigate, onLogout, onStyleDeleted, onRegisterStyle }) {
+        const [selectedClass, setSelectedClass] = useState("");
+        const [search, setSearch] = useState("");
+        const [favoritesOnly, setFavoritesOnly] = useState(false);
+        const [savableOnly, setSavableOnly] = useState(false);
+        const [page, setPage] = useState(1);
+        const filtered = styles.filter((style) => {
+          const matchesClass = !selectedClass || style.game_class === selectedClass;
+          const searchText = `${style.title || ""} ${style.owner || ""}`.toLowerCase();
+          const matchesSearch = mine || !search || searchText.includes(search.toLowerCase());
+          const matchesFavorites = mine || !favoritesOnly || style.is_favorite || style.favorite;
+          const matchesSavable = mine || !savableOnly || style.can_be_saved;
+          return matchesClass && matchesSearch && matchesFavorites && matchesSavable;
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / 10));
+        const pageStyles = filtered.slice((page - 1) * 10, page * 10);
+
+        useEffect(() => setPage(1), [selectedClass, search, favoritesOnly, savableOnly, styles]);
+
+        async function deleteStyle(style) {
+          await api(`/api/styles/${style.id}/`, { method: "DELETE" });
+          onStyleDeleted(style.id);
+        }
+
+        if (mine && !user) {
+          return (
+            <div className="-mx-5 -my-8 min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.14),transparent_34%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.98))] text-slate-100">
+              <GameTopBar active="mine" navigate={navigate} user={user} onLogout={onLogout} />
+              <section className="mx-auto mt-24 max-w-xl border border-slate-700 bg-black/55 p-8 text-center">
+                <h1 className="text-3xl font-serif text-yellow-50">Login required</h1>
+                <p className="mt-2 text-slate-300">Login to view styles registered by your account.</p>
+                <button onClick={() => navigate(routes.login)} className="mt-6 border border-yellow-700 bg-yellow-700/85 px-8 py-3 font-bold text-yellow-50">
+                  Login
+                </button>
+              </section>
+            </div>
+          );
+        }
+
+        return (
+          <div className="-mx-5 -my-8 min-h-screen bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.14),transparent_34%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.98))] px-1 pb-3 text-slate-100">
+            <GameTopBar active={mine ? "mine" : "all"} navigate={navigate} user={user} onLogout={onLogout} />
+
+            <div className="mx-auto max-w-[1420px] px-1 pt-3">
+              {!mine && (
+                <div className="mb-3 grid gap-3 lg:grid-cols-[290px_1fr]">
+                  <div className="flex flex-wrap items-center gap-5 text-sm text-slate-300">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} className="h-5 w-5 appearance-none border border-slate-500 bg-black/50 checked:bg-sky-500" />
+                      View Favorites ({filtered.filter((style) => style.is_favorite || style.favorite).length}/40)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={savableOnly} onChange={(event) => setSavableOnly(event.target.checked)} className="h-5 w-5 appearance-none border border-slate-500 bg-black/50 checked:bg-sky-500" />
+                      View only savable appearances
+                    </label>
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Enter Title or Author Name" className="h-10 w-full max-w-sm border border-slate-700 bg-black/45 px-3 text-sm text-slate-200 outline-none focus:border-sky-400" />
+                    <button className="h-10 w-16 border border-slate-700 bg-[#263244] text-sm text-yellow-100 hover:border-sky-400">Search</button>
+                    <button onClick={() => setPage(1)} className="h-10 min-w-36 border border-slate-700 bg-[#232b38] px-5 font-serif text-yellow-100 hover:border-yellow-500">
+                      View Latest
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-3 lg:grid-cols-[290px_1fr]">
+                <ClassSidebar classes={classes} selectedClass={selectedClass} setSelectedClass={setSelectedClass} />
+
+                <section className={mine ? "min-h-[640px] pt-1" : ""}>
+                  {mine && (
+                    <p className="mb-4 text-center text-sm text-slate-100">
+                      You can <span className="text-yellow-300">edit and delete styles</span> that you have registered.
+                    </p>
+                  )}
+
+                  {(mine ? filtered : pageStyles).length ? (
+                    <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${mine ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
+                      {(mine ? filtered : pageStyles).map((style, index) => mine ? <MyStyleCard key={style.id} style={style} onDelete={deleteStyle} /> : <GameStyleCard key={style.id} style={style} featured={index === 0 && page === 1} />)}
+                    </div>
+                  ) : (
+                    <div className="grid min-h-[520px] place-items-center border border-slate-800 bg-black/45 text-slate-400">
+                      No styles found.
+                    </div>
+                  )}
+
+                  {!mine && (
+                    <div className="relative mt-3 flex items-center justify-center gap-4 border-t border-yellow-700/30 pt-2 text-slate-200">
+                      <button disabled={page === 1} onClick={() => setPage(1)} className="text-sm text-sky-300 disabled:opacity-30">First</button>
+                      <button disabled={page === 1} onClick={() => setPage(Math.max(1, page - 1))} className="text-sm text-sky-300 disabled:opacity-30">Prev</button>
+                      <span className="min-w-24 text-center">{page}/{totalPages}</span>
+                      <button disabled={page === totalPages} onClick={() => setPage(Math.min(totalPages, page + 1))} className="text-sm text-sky-300 disabled:opacity-30">Next</button>
+                      <button disabled={page === totalPages} onClick={() => setPage(totalPages)} className="text-sm text-sky-300 disabled:opacity-30">Last</button>
+                    </div>
+                  )}
+                </section>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between border-t border-yellow-700/30 py-3 text-sm text-slate-300">
+                <div>
+                  Registered Style <span className="text-yellow-300">{mine ? styles.length : filtered.length}</span>/40
+                </div>
+                <button onClick={onRegisterStyle} className="border border-yellow-700 bg-yellow-700/85 px-9 py-3 text-sm text-yellow-50 hover:bg-yellow-600">
+                  Register Style
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function RegisterStyleModal({ open, user, classes, onClose, onCreated }) {
+        const [title, setTitle] = useState("");
+        const [description, setDescription] = useState("");
+        const [gameClass, setGameClass] = useState("");
+        const [canBeSaved, setCanBeSaved] = useState(false);
+        const [isPublic, setIsPublic] = useState(false);
+        const [firstImage, setFirstImage] = useState(null);
+        const [extraImages, setExtraImages] = useState([]);
+        const [thumbnailBlob, setThumbnailBlob] = useState(null);
+        const [cropOpen, setCropOpen] = useState(false);
+        const [error, setError] = useState("");
+        const [saving, setSaving] = useState(false);
+
+        const images = firstImage ? [firstImage, ...extraImages] : extraImages;
+        const firstImageUrl = firstImage ? URL.createObjectURL(firstImage) : "";
+        const activeGameClass = gameClass || classes[0]?.value || "Warrior(Male)";
+
+        if (!open) return null;
+
+        function resetAndClose() {
+          setTitle("");
+          setDescription("");
+          setGameClass("");
+          setCanBeSaved(false);
+          setIsPublic(false);
+          setFirstImage(null);
+          setExtraImages([]);
+          setThumbnailBlob(null);
+          setCropOpen(false);
+          setError("");
+          setSaving(false);
+          onClose();
+        }
+
+        function chooseFirstImage(event) {
+          const selected = Array.from(event.target.files || []);
+          const nextFirstImage = selected[0] || null;
+          setFirstImage(nextFirstImage);
+          setThumbnailBlob(null);
+          if (nextFirstImage) setCropOpen(true);
+          event.target.value = "";
+        }
+
+        function chooseExtraImages(event) {
+          const selected = Array.from(event.target.files || []);
+          setExtraImages((current) => [...current, ...selected]);
+          event.target.value = "";
+        }
+
+        function removeFirstImage() {
+          setFirstImage(null);
+          setThumbnailBlob(null);
+          setCropOpen(false);
+        }
+
+        function removeExtraImage(indexToRemove) {
+          setExtraImages((current) => current.filter((_, index) => index !== indexToRemove));
+        }
+
+        async function submit(event) {
+          event.preventDefault();
+          setError("");
+          if (!title.trim()) {
+            setError("Title is required.");
+            return;
+          }
+          if (!firstImage) {
+            setError("At least one screenshot is required.");
+            return;
+          }
+          if (!thumbnailBlob) {
+            setCropOpen(true);
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append("title", title.trim());
+          formData.append("description", description.trim());
+          formData.append("game_class", activeGameClass);
+          formData.append("can_be_saved", canBeSaved ? "true" : "false");
+          formData.append("requires_custom_file", isPublic ? "false" : "false");
+          [firstImage, ...extraImages].forEach((image) => formData.append("image", image));
+          formData.append("thumbnail", thumbnailBlob, "thumbnail.jpg");
+
+          setSaving(true);
+          try {
+            await api("/api/styles/", { method: "POST", body: formData });
+            await onCreated();
+            resetAndClose();
+          } catch (err) {
+            setError(err.message);
+            setSaving(false);
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 text-slate-100">
+            <form onSubmit={submit} className="absolute left-1/2 top-1/2 grid h-[min(720px,94vh)] w-[min(980px,96vw)] -translate-x-1/2 -translate-y-1/2 grid-cols-[1fr_236px] border border-yellow-700/40 bg-[#11161c] shadow-2xl">
+              <div className="col-span-2 border-b border-yellow-700/35 bg-black/45 py-1 text-center font-serif text-xl text-yellow-50">
+                Register Style
+                <button type="button" onClick={resetAndClose} className="absolute right-4 top-1 text-2xl text-yellow-200 hover:text-white">X</button>
+              </div>
+
+              <section className="game-scroll min-h-0 space-y-2 overflow-y-auto border-r border-slate-700 p-2 pr-3">
+                <input value={title} onChange={(event) => setTitle(event.target.value.slice(0, 100))} maxLength={100} placeholder="[Required] Enter title. (100 characters max)" className="h-8 w-full border border-slate-700 bg-black/35 px-3 text-center text-sm outline-none focus:border-yellow-600" />
+                <textarea value={description} onChange={(event) => setDescription(event.target.value.slice(0, 250))} maxLength={250} placeholder="[Optional] Enter description. (250 characters max)" className="h-24 w-full resize-none border border-slate-700 bg-black/35 px-3 py-9 text-center text-sm outline-none focus:border-yellow-600" />
+                <div className="space-y-2 border-t border-yellow-700/30 pt-2">
+                  <div className="grid min-h-[276px] place-items-center border border-red-700/70 bg-[#171d23] p-5 text-center">
+                    {firstImage ? (
+                      <div className="relative h-[min(360px,46vh)] min-h-[236px] w-full overflow-hidden border border-red-500/80 bg-black">
+                          <button type="button" onClick={removeFirstImage} className="absolute right-2 top-2 z-10 border border-red-400 bg-black/75 px-2 py-1 text-xs text-red-100 hover:bg-red-800">
+                            Remove
+                          </button>
+                          <button type="button" onClick={() => setCropOpen(true)} className="block h-full w-full">
+                            <img src={firstImageUrl} alt="First screenshot" className="h-full w-full object-contain" />
+                          </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm">
+                          <span className="text-yellow-300">[Required]</span> The first screenshot can be applied as the <span className="text-yellow-300">screenshot with the appearance information.</span>
+                        </p>
+                        <label className="mx-auto mt-3 block w-36 cursor-pointer border border-slate-700 bg-[#2a3542] px-8 py-2 text-sm hover:border-yellow-600">
+                          Apply
+                          <input type="file" accept="image/*" onChange={chooseFirstImage} className="hidden" />
+                        </label>
+                      </div>
+                    )}
+                    {!firstImage && <p className="self-end text-sm">Screenshots with appearance information can be <span className="text-yellow-300">set in the Selfie Mode option.</span></p>}
+                  </div>
+                  {extraImages.map((image, index) => (
+                    <div key={`${image.name}-${index}`} className="relative h-[min(300px,38vh)] min-h-[190px] overflow-hidden border border-slate-600 bg-black">
+                      <button type="button" onClick={() => removeExtraImage(index)} className="absolute right-2 top-2 z-10 border border-red-400 bg-black/75 px-2 py-1 text-xs text-red-100 hover:bg-red-800">
+                        Remove
+                      </button>
+                      <img src={URL.createObjectURL(image)} alt="" className="h-full w-full object-contain" />
+                    </div>
+                  ))}
+                  <div className="grid min-h-[190px] place-items-center border border-slate-700 bg-[#171d23] p-4 text-center">
+                    <div>
+                      <p className="text-sm text-slate-300">Additional screenshots do not require thumbnail selection.</p>
+                      <label className="mx-auto mt-3 block w-44 cursor-pointer border border-slate-700 bg-[#2a3542] px-6 py-2 text-sm hover:border-yellow-600">
+                        Add Image
+                        <input type="file" accept="image/*" multiple onChange={chooseExtraImages} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                {error && <p className="border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</p>}
+              </section>
+
+              <aside className="game-scroll min-h-0 overflow-y-auto p-3">
+                <div className="grid aspect-[4/3] place-items-center bg-[radial-gradient(circle,rgba(79,70,229,0.38),transparent_58%),#111827] text-center">
+                  <div>
+                    <div className="font-serif text-3xl text-white drop-shadow-[0_0_12px_rgba(147,197,253,0.95)]">STYLE BOOK</div>
+                    <div className="mt-2 text-yellow-100">{user?.username || "Guest"}</div>
+                  </div>
+                </div>
+                <div className="border-b border-yellow-700/40 py-3 text-center text-sky-200">07/12/26</div>
+                <label className="mt-3 flex items-center justify-between text-sm">
+                  Allow Saving
+                  <input type="checkbox" checked={canBeSaved} onChange={(event) => setCanBeSaved(event.target.checked)} />
+                </label>
+                <label className="mt-3 flex items-center justify-between text-sm">
+                  Set skin to public
+                  <input type="checkbox" checked={isPublic} onChange={(event) => setIsPublic(event.target.checked)} />
+                </label>
+                <select value={activeGameClass} onChange={(event) => setGameClass(event.target.value)} className="mt-4 h-9 w-full border border-slate-700 bg-black/45 px-2 text-sm outline-none">
+                  {classes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+                <button type="button" onClick={() => images.length && setCropOpen(true)} className="mt-4 grid aspect-square w-full place-items-center border border-slate-700 bg-[#171d23] text-center text-sm text-slate-400">
+                  {thumbnailBlob ? (
+                    <img src={URL.createObjectURL(thumbnailBlob)} alt="Thumbnail preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <span>When applying the first screenshot<br />Edit thumbnail</span>
+                  )}
+                </button>
+                <div className="bg-black/45 py-2 text-center text-sm text-yellow-200">Preview Thumbnail</div>
+                <button disabled={saving} className="mt-2 h-10 w-full border border-black bg-yellow-700/80 text-yellow-50 disabled:bg-slate-800 disabled:text-slate-500">
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </aside>
+            </form>
+
+            {cropOpen && images[0] && (
+              <ThumbnailCropper
+                file={images[0]}
+                images={images}
+                onClose={() => setCropOpen(false)}
+                onApply={(blob) => {
+                  setThumbnailBlob(blob);
+                  setCropOpen(false);
+                }}
+              />
+            )}
+          </div>
+        );
+      }
+
+      function ThumbnailCropper({ file, images, onApply, onClose }) {
+        const cropSize = 22;
+        const cropAreaRef = useRef(null);
+        const [selection, setSelection] = useState({ x: 36, y: 6 });
+        const [zoom, setZoom] = useState(1);
+        const [pan, setPan] = useState({ x: 0, y: 0 });
+        const [flipped, setFlipped] = useState(false);
+        const [dragging, setDragging] = useState(null);
+        const imageUrl = URL.createObjectURL(file);
+        const cropBoxStyle = {
+          left: `${selection.x}%`,
+          top: `${selection.y}%`,
+          width: `${cropSize}%`,
+          aspectRatio: "1 / 1",
+        };
+        const sourceImageStyle = {
+          transform: `translate(${pan.x}%, ${pan.y}%) scale(${flipped ? -zoom : zoom}, ${zoom})`,
+        };
+
+        function moveCropWindow(event) {
+          const rect = cropAreaRef.current.getBoundingClientRect();
+          const x = ((event.clientX - rect.left) / rect.width) * 100 - cropSize / 2;
+          const y = ((event.clientY - rect.top) / rect.height) * 100 - cropSize / 2;
+          setSelection({
+            x: Math.max(0, Math.min(100 - cropSize, x)),
+            y: Math.max(0, Math.min(100 - cropSize, y)),
+          });
+        }
+
+        function panImage(event) {
+          if (zoom <= 1) return;
+          const rect = cropAreaRef.current.getBoundingClientRect();
+          const dx = (event.movementX / rect.width) * 100;
+          const dy = (event.movementY / rect.height) * 100;
+          const limit = Math.max(0, (zoom - 1) * 22);
+          setPan((current) => {
+            return {
+              x: Math.max(-limit, Math.min(limit, current.x + dx)),
+              y: Math.max(-limit, Math.min(limit, current.y + dy)),
+            };
+          });
+        }
+
+        function handleDrag(event) {
+          if (event.buttons !== 1) {
+            setDragging(null);
+            return;
+          }
+          if (dragging === "crop") moveCropWindow(event);
+          if (dragging === "image") panImage(event);
+        }
+
+        function mapScreenPointToSource(pointX, pointY, img, areaRect) {
+          const areaWidth = areaRect.width;
+          const areaHeight = areaRect.height;
+          const originX = areaWidth / 2;
+          const originY = areaHeight / 2;
+          const translateX = (pan.x / 100) * areaWidth;
+          const translateY = (pan.y / 100) * areaHeight;
+          const scaleX = flipped ? -zoom : zoom;
+          const untransformedX = originX + ((pointX - originX - translateX) / scaleX);
+          const untransformedY = originY + ((pointY - originY - translateY) / zoom);
+          const imageAspect = img.naturalWidth / img.naturalHeight;
+          const areaAspect = areaWidth / areaHeight;
+          let contentWidth = areaWidth;
+          let contentHeight = areaHeight;
+          let contentLeft = 0;
+          let contentTop = 0;
+
+          if (imageAspect > areaAspect) {
+            contentHeight = areaWidth / imageAspect;
+            contentTop = (areaHeight - contentHeight) / 2;
+          } else {
+            contentWidth = areaHeight * imageAspect;
+            contentLeft = (areaWidth - contentWidth) / 2;
+          }
+
+          return {
+            x: ((untransformedX - contentLeft) / contentWidth) * img.naturalWidth,
+            y: ((untransformedY - contentTop) / contentHeight) * img.naturalHeight,
+          };
+        }
+
+        function applyCrop() {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 640;
+            canvas.height = 640;
+            const ctx = canvas.getContext("2d");
+            const areaRect = cropAreaRef.current.getBoundingClientRect();
+            const cropLeft = (selection.x / 100) * areaRect.width;
+            const cropTop = (selection.y / 100) * areaRect.height;
+            const cropSizePx = (cropSize / 100) * areaRect.width;
+            const topLeft = mapScreenPointToSource(cropLeft, cropTop, img, areaRect);
+            const bottomRight = mapScreenPointToSource(cropLeft + cropSizePx, cropTop + cropSizePx, img, areaRect);
+            const sourceSize = Math.max(1, Math.min(Math.abs(bottomRight.x - topLeft.x), Math.abs(bottomRight.y - topLeft.y)));
+            const centerX = (topLeft.x + bottomRight.x) / 2;
+            const centerY = (topLeft.y + bottomRight.y) / 2;
+            const sx = Math.max(0, Math.min(img.naturalWidth - sourceSize, centerX - sourceSize / 2));
+            const sy = Math.max(0, Math.min(img.naturalHeight - sourceSize, centerY - sourceSize / 2));
+            if (flipped) {
+              ctx.translate(640, 0);
+              ctx.scale(-1, 1);
+            }
+            ctx.drawImage(img, sx, sy, sourceSize, sourceSize, 0, 0, 640, 640);
+            canvas.toBlob((blob) => onApply(blob), "image/jpeg", 0.92);
+          };
+          img.src = imageUrl;
+        }
+
+        return (
+          <div className="absolute inset-0 z-10 bg-black/80">
+            <div className="border-b border-yellow-700/35 bg-black/60 py-1 text-center font-serif text-xl text-yellow-50">Apply Screenshot</div>
+            <div className="mx-auto mt-3 w-[92vw]">
+              <div
+                ref={cropAreaRef}
+                onMouseMove={handleDrag}
+                onMouseUp={() => setDragging(null)}
+                onMouseLeave={() => setDragging(null)}
+                className="relative mx-auto h-[min(580px,70vh)] max-w-[1028px] overflow-hidden border-4 border-yellow-400 bg-black"
+              >
+                <img
+                  src={imageUrl}
+                  alt="Crop source"
+                  style={sourceImageStyle}
+                  onMouseDown={(event) => { event.preventDefault(); if (zoom > 1) setDragging("image"); }}
+                  draggable="false"
+                  className={`h-full w-full object-contain opacity-65 transition-transform duration-150 ${zoom > 1 ? "cursor-move" : "cursor-default"}`}
+                />
+                <div
+                  onMouseDown={(event) => { event.stopPropagation(); setDragging("crop"); moveCropWindow(event); }}
+                  className="absolute cursor-grab overflow-hidden border-4 border-orange-400 active:cursor-grabbing"
+                  style={cropBoxStyle}
+                >
+                  <div className="absolute inset-x-0 bottom-0 bg-black/60 py-3 text-center text-sm text-yellow-200">Preview Thumbnail</div>
+                </div>
+              </div>
+              <div className="mt-2 flex gap-1 overflow-hidden">
+                {images.map((image, index) => (
+                  <img key={`${image.name}-${index}`} src={URL.createObjectURL(image)} alt="" className={`h-8 w-14 border object-cover ${index === 0 ? "border-sky-400" : "border-slate-700"}`} />
+                ))}
+              </div>
+              <label className="mt-3 flex items-center gap-3 text-sm text-slate-300">
+                Image zoom
+                <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => { const nextZoom = Number(event.target.value); setZoom(nextZoom); if (nextZoom <= 1) setPan({ x: 0, y: 0 }); }} className="w-64" />
+              </label>
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" onClick={() => setFlipped((current) => !current)} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Flip Left/Right</button>
+                <button type="button" onClick={applyCrop} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Post</button>
+                <button type="button" onClick={onClose} className="h-9 w-40 border border-slate-700 bg-[#2a3542] text-sm text-white hover:border-yellow-600">Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function LegacyListingPage({ title, styles, classes, mine, user, navigate }) {
         const [selectedClass, setSelectedClass] = useState("");
         const [search, setSearch] = useState("");
         const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -429,6 +1090,7 @@
         const [styles, setStyles] = useState([]);
         const [myStyles, setMyStyles] = useState([]);
         const [classes, setClasses] = useState([]);
+        const [registerOpen, setRegisterOpen] = useState(false);
 
         async function loadData(currentUser) {
           const [stylesData, classesData] = await Promise.all([
@@ -463,13 +1125,35 @@
           navigate(routes.home);
         }
 
-        let page = <HomePage styles={styles} navigate={navigate} />;
+        function removeDeletedStyle(styleId) {
+          setStyles((current) => current.filter((style) => style.id !== styleId));
+          setMyStyles((current) => current.filter((style) => style.id !== styleId));
+        }
+
+        function openRegisterStyle() {
+          if (!user) {
+            navigate(routes.login);
+            return;
+          }
+          setRegisterOpen(true);
+        }
+
+        async function refreshAfterCreate() {
+          await loadData(user);
+        }
+
+        let page = <HomePage styles={styles} navigate={navigate} user={user} onLogout={logoutUser} onRegisterStyle={openRegisterStyle} />;
         if (path === routes.login) page = <AuthPage mode="login" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
         if (path === routes.register) page = <AuthPage mode="register" navigate={navigate} onAuth={(nextUser) => { setUser(nextUser); loadData(nextUser); }} />;
-        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} />;
-        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} />;
+        if (path === routes.all) page = <ListingPage title="View all styles" styles={styles} classes={classes} user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} />;
+        if (path === routes.mine) page = <ListingPage title="My styles" styles={myStyles} classes={classes} mine user={user} navigate={navigate} onLogout={logoutUser} onStyleDeleted={removeDeletedStyle} onRegisterStyle={openRegisterStyle} />;
 
-        return <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.all || path === routes.mine}>{page}</Shell>;
+        return (
+          <>
+            <Shell user={user} navigate={navigate} onLogout={logoutUser} wide={path === routes.home || path === routes.all || path === routes.mine} hideHeader={path === routes.home || path === routes.all || path === routes.mine}>{page}</Shell>
+            <RegisterStyleModal open={registerOpen} user={user} classes={classes} onClose={() => setRegisterOpen(false)} onCreated={refreshAfterCreate} />
+          </>
+        );
       }
 
       ReactDOM.createRoot(document.getElementById("root")).render(<App />);

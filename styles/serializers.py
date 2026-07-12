@@ -79,6 +79,7 @@ class StyleSerializer(serializers.ModelSerializer):
 class StyleCreateSerializer(serializers.ModelSerializer):
 
     images = StyleImageSerializer(many=True, read_only=True)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=250)
 
     class Meta:
         model = Style
@@ -93,10 +94,11 @@ class StyleCreateSerializer(serializers.ModelSerializer):
 
     def create(self,validated_data):
         request = self.context['request']
+        validated_data.setdefault("description", "")
 
         images = request.FILES.getlist('image')
         files = request.FILES.getlist('files')
-        thumbnail = request.FILES.getlist('thumbnails')
+        thumbnail = request.FILES.get('thumbnail')
 
         style = Style.objects.create(user=request.user, **validated_data)
 
