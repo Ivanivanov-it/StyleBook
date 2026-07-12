@@ -69,8 +69,13 @@
 
         if (response.status === 204) return null;
 
-        const data = await response.json();
+        const contentType = response.headers.get("Content-Type") || "";
+        const data = contentType.includes("application/json") ? await response.json() : await response.text();
         if (!response.ok) {
+          if (typeof data === "string") {
+            const title = data.match(/<title>(.*?)<\/title>/i)?.[1];
+            throw new Error(title || `Request failed with status ${response.status}.`);
+          }
           throw new Error(data.detail || JSON.stringify(data));
         }
         return data;

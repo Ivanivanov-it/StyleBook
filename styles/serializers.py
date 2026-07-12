@@ -89,7 +89,8 @@ class StyleCreateSerializer(serializers.ModelSerializer):
             "description",
             "game_class",
             "can_be_saved",
-            "requires_custom_file"
+            "requires_custom_file",
+            "images",
         ]
 
     def create(self,validated_data):
